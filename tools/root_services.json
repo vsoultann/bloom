@@ -1,0 +1,1323 @@
+{
+ "root.AccessRuleGrpcService": [
+  {
+   "in": "AccessRuleCreateRequest",
+   "method": "Create",
+   "out": "AccessRuleCreateResponse"
+  },
+  {
+   "in": "AccessRuleEditRequest",
+   "method": "Edit",
+   "out": "AccessRuleEditResponse"
+  },
+  {
+   "in": "AccessRuleUpdateRequest",
+   "method": "Update",
+   "out": "AccessRuleUpdateResponse"
+  },
+  {
+   "in": "AccessRuleListByChannelOrChannelGroupRequest",
+   "method": "ListByChannelOrChannelGroup",
+   "out": "AccessRuleListResponse"
+  },
+  {
+   "in": "AccessRuleListByRoleOrMemberRequest",
+   "method": "ListByRoleOrMember",
+   "out": "AccessRuleListResponse"
+  },
+  {
+   "in": "AccessRuleGetRequest",
+   "method": "Get",
+   "out": "AccessRuleResponse"
+  },
+  {
+   "in": "AccessRuleDeleteRequest",
+   "method": "Delete",
+   "out": "AccessRuleDeleteResponse"
+  }
+ ],
+ "root.AppReviewGrpcService": [
+  {
+   "in": "AppReviewCreateRequest",
+   "method": "Create",
+   "out": "AppReviewCreateResponse"
+  },
+  {
+   "in": "AppReviewGetRequest",
+   "method": "Get",
+   "out": "AppReviewResponse"
+  },
+  {
+   "in": "AppReviewListRequest",
+   "method": "List",
+   "out": "AppReviewListResponse"
+  },
+  {
+   "in": "Empty",
+   "method": "ListMine",
+   "out": "AppReviewListResponse"
+  },
+  {
+   "in": "AppReviewEditRequest",
+   "method": "Edit",
+   "out": "AppReviewEditResponse"
+  },
+  {
+   "in": "AppReviewDeleteRequest",
+   "method": "Delete",
+   "out": "AppReviewDeleteResponse"
+  }
+ ],
+ "root.AppStoreGrpcService": [
+  {
+   "in": "AppStoreGetRequest",
+   "method": "Get",
+   "out": "AppStoreGetResponse"
+  },
+  {
+   "in": "AppStoreGetGlobalSettingsRequest",
+   "method": "GetGlobalSettings",
+   "out": "AppStoreGetGlobalSettingsResponse"
+  },
+  {
+   "in": "AppStoreListRequest",
+   "method": "List",
+   "out": "AppStoreListResponse"
+  },
+  {
+   "in": "AppStoreSearchRequest",
+   "method": "Search",
+   "out": "AppStoreSearchResponse"
+  },
+  {
+   "in": "AppStoreListVersionRequest",
+   "method": "ListVersion",
+   "out": "AppStoreListVersionResponse"
+  },
+  {
+   "in": "AppStoreListShortRequest",
+   "method": "ListShort",
+   "out": "AppStoreListShortResponse"
+  }
+ ],
+ "root.AssetGrpcService": [
+  {
+   "in": "AssetGetRequest",
+   "method": "Get",
+   "out": "AssetGetResponse"
+  },
+  {
+   "in": "AssetUploadTokenStatusRequest",
+   "method": "GetUploadTokenStatus",
+   "out": "AssetUploadTokenStatusResponse"
+  },
+  {
+   "in": "AssetAppCreateRequest",
+   "method": "AppCreate",
+   "out": "AssetAppCreateResponse"
+  },
+  {
+   "in": "AssetLinkPrefetchRequest",
+   "method": "LinkPrefetch",
+   "out": "AssetLinkPrefetchResponse"
+  }
+ ],
+ "root.BillingGrpcService": [
+  {
+   "in": "BillingListProductsRequest",
+   "method": "ListProducts",
+   "out": "BillingListProductsResponse"
+  },
+  {
+   "in": "BillingUserGetPaymentStatusRequest",
+   "method": "UserGetPaymentStatus",
+   "out": "BillingUserGetPaymentStatusResponse"
+  },
+  {
+   "in": "BillingUserListPaymentsRequest",
+   "method": "UserListPayments",
+   "out": "BillingUserListPaymentsResponse"
+  },
+  {
+   "in": "BillingUserPurchaseCreateRequest",
+   "method": "UserPurchaseCreate",
+   "out": "BillingUserPurchaseCreateResponse"
+  },
+  {
+   "in": "BillingUserSubscriptionCreateRequest",
+   "method": "UserSubscriptionCreate",
+   "out": "BillingUserSubscriptionCreateResponse"
+  },
+  {
+   "in": "BillingUserSubscriptionCancelRequest",
+   "method": "UserSubscriptionCancel",
+   "out": "BillingUserSubscriptionCancelResponse"
+  },
+  {
+   "in": "BillingUserSubscriptionCancelAllRequest",
+   "method": "UserSubscriptionCancelAll",
+   "out": "BillingUserSubscriptionCancelAllResponse"
+  },
+  {
+   "in": "BillingUserSubscriptionListRequest",
+   "method": "UserSubscriptionList",
+   "out": "BillingUserSubscriptionListResponse"
+  },
+  {
+   "in": "BillingUserPaymentMethodListRequest",
+   "method": "UserPaymentMethodList",
+   "out": "BillingUserPaymentMethodListResponse"
+  },
+  {
+   "in": "BillingUserPaymentMethodCreateRequest",
+   "method": "UserPaymentMethodCreate",
+   "out": "BillingUserPaymentMethodCreateResponse"
+  },
+  {
+   "in": "BillingUserPaymentMethodDeleteRequest",
+   "method": "UserPaymentMethodDelete",
+   "out": "BillingUserPaymentMethodDeleteResponse"
+  },
+  {
+   "in": "BillingUserPaymentMethodSetDefaultRequest",
+   "method": "UserPaymentMethodSetDefault",
+   "out": "BillingUserPaymentMethodSetDefaultResponse"
+  }
+ ],
+ "root.ChannelGroupGrpcService": [
+  {
+   "in": "ChannelGroupCreateRequest",
+   "method": "Create",
+   "out": "ChannelGroupCreateResponse"
+  },
+  {
+   "in": "ChannelGroupGetRequest",
+   "method": "Get",
+   "out": "ChannelGroupResponse"
+  },
+  {
+   "in": "ChannelGroupListRequest",
+   "method": "List",
+   "out": "ChannelGroupListResponse"
+  },
+  {
+   "in": "ChannelGroupEditRequest",
+   "method": "Edit",
+   "out": "ChannelGroupEditResponse"
+  },
+  {
+   "in": "ChannelGroupMoveRequest",
+   "method": "Move",
+   "out": "ChannelGroupMoveResponse"
+  },
+  {
+   "in": "ChannelGroupDeleteRequest",
+   "method": "Delete",
+   "out": "ChannelGroupDeleteResponse"
+  }
+ ],
+ "root.ChannelGrpcService": [
+  {
+   "in": "ChannelCreateRequest",
+   "method": "Create",
+   "out": "ChannelCreateResponse"
+  },
+  {
+   "in": "ChannelGetRequest",
+   "method": "Get",
+   "out": "ChannelResponse"
+  },
+  {
+   "in": "ChannelListRequest",
+   "method": "List",
+   "out": "ChannelListResponse"
+  },
+  {
+   "in": "ChannelMoveRequest",
+   "method": "Move",
+   "out": "ChannelMoveResponse"
+  },
+  {
+   "in": "ChannelEditRequest",
+   "method": "Edit",
+   "out": "ChannelEditResponse"
+  },
+  {
+   "in": "ChannelDeleteRequest",
+   "method": "Delete",
+   "out": "ChannelDeleteResponse"
+  }
+ ],
+ "root.CommunityAppGrpcService": [
+  {
+   "in": "CommunityAppGetRequest",
+   "method": "Get",
+   "out": "CommunityAppGetResponse"
+  },
+  {
+   "in": "CommunityAppListRequest",
+   "method": "List",
+   "out": "CommunityAppListResponse"
+  },
+  {
+   "in": "CommunityAppListForMemberRequest",
+   "method": "ListForMember",
+   "out": "CommunityAppListForMemberResponse"
+  },
+  {
+   "in": "CommunityAppAddRequest",
+   "method": "Add",
+   "out": "CommunityAppAddResponse"
+  },
+  {
+   "in": "CommunityAppRemoveRequest",
+   "method": "Remove",
+   "out": "CommunityAppRemoveResponse"
+  },
+  {
+   "in": "CommunityAppUpdateVersionRequest",
+   "method": "UpdateVersion",
+   "out": "CommunityAppUpdateVersionResponse"
+  },
+  {
+   "in": "CommunityAppSetSettingsRequest",
+   "method": "SetSettings",
+   "out": "CommunityAppSetSettingsResponse"
+  },
+  {
+   "in": "CommunityAppSetButtonRequest",
+   "method": "SetButton",
+   "out": "CommunityAppSetButtonResponse"
+  },
+  {
+   "in": "CommunityAppSetAppOrganizationAccessRequest",
+   "method": "SetAppOrganizationAccess",
+   "out": "CommunityAppSetAppOrganizationAccessResponse"
+  },
+  {
+   "in": "CommunityAppGetSettingsRequest",
+   "method": "GetSettings",
+   "out": "CommunityAppGetSettingsResponse"
+  },
+  {
+   "in": "CommunityAppInitializeRequest",
+   "method": "Initialize",
+   "out": "CommunityAppInitializeResponse"
+  },
+  {
+   "in": "CommunityAppListChannelGroupsRequest",
+   "method": "ListChannelGroups",
+   "out": "CommunityAppListChannelGroupsResponse"
+  },
+  {
+   "in": "CommunityAppListChannelGroupsForAddRequest",
+   "method": "ListChannelGroupsForAdd",
+   "out": "CommunityAppListChannelGroupsForAddResponse"
+  },
+  {
+   "in": "CommunityAppSetDevSettingsRequest",
+   "method": "SetDevSettings",
+   "out": "CommunityAppSetDevSettingsResponse"
+  },
+  {
+   "in": "CommunityAppSendNotificationRequest",
+   "method": "SendNotification",
+   "out": "CommunityAppSendNotificationResponse"
+  },
+  {
+   "in": "CommunityAppSetChannelActivityRequest",
+   "method": "SetChannelActivity",
+   "out": "CommunityAppSetChannelActivityResponse"
+  }
+ ],
+ "root.CommunityAppLogGrpcService": [
+  {
+   "in": "CommunityAppLogCreateRequest",
+   "method": "Create",
+   "out": "CommunityAppLogCreateResponse"
+  },
+  {
+   "in": "CommunityAppLogGetRequest",
+   "method": "Get",
+   "out": "CommunityAppLogResponse"
+  },
+  {
+   "in": "CommunityAppLogListRequest",
+   "method": "List",
+   "out": "CommunityAppLogListResponse"
+  }
+ ],
+ "root.CommunityBillingGrpcService": [
+  {
+   "in": "CommunityBillingAssignCoreRequest",
+   "method": "AssignCore",
+   "out": "CommunityBillingAssignCoreResponse"
+  },
+  {
+   "in": "CommunityBillingListCoresRequest",
+   "method": "ListCores",
+   "out": "CommunityBillingListCoresResponse"
+  },
+  {
+   "in": "CommunityBillingScheduleCoreMoveRequest",
+   "method": "ScheduleCoreMove",
+   "out": "CommunityBillingScheduleCoreMoveResponse"
+  }
+ ],
+ "root.CommunityDiscoveryGrpcService": [
+  {
+   "in": "CommunityDiscoverySearchRequest",
+   "method": "Search",
+   "out": "CommunityDiscoverySearchResponse"
+  },
+  {
+   "in": "CommunityDiscoveryJoinRequest",
+   "method": "Join",
+   "out": "CommunityDiscoveryJoinResponse"
+  }
+ ],
+ "root.CommunityEmojiGrpcService": [
+  {
+   "in": "CommunityEmojiCreateRequest",
+   "method": "Create",
+   "out": "CommunityEmojiCreateResponse"
+  },
+  {
+   "in": "CommunityEmojiGetRequest",
+   "method": "Get",
+   "out": "CommunityEmojiResponse"
+  },
+  {
+   "in": "CommunityEmojiListRequest",
+   "method": "List",
+   "out": "CommunityEmojiListResponse"
+  },
+  {
+   "in": "CommunityEmojiListMineRequest",
+   "method": "ListMine",
+   "out": "CommunityEmojiListMineResponse"
+  },
+  {
+   "in": "CommunityEmojiDeleteRequest",
+   "method": "Delete",
+   "out": "CommunityEmojiDeleteResponse"
+  },
+  {
+   "in": "CommunityEmojiResolveRequest",
+   "method": "Resolve",
+   "out": "CommunityEmojiResolveResponse"
+  }
+ ],
+ "root.CommunityGrpcService": [
+  {
+   "in": "CommunityListMineRequest",
+   "method": "ListMine",
+   "out": "CommunityMemberListResponse"
+  },
+  {
+   "in": "CommunityGetExtendedRequest",
+   "method": "GetExtended",
+   "out": "CommunityGetExtendedResponse"
+  },
+  {
+   "in": "CommunityGetForAppRequest",
+   "method": "GetForApp",
+   "out": "CommunityGetForAppResponse"
+  },
+  {
+   "in": "CommunityGetRequest",
+   "method": "Get",
+   "out": "CommunityGetResponse"
+  },
+  {
+   "in": "CommunityAttachRequest",
+   "method": "Attach",
+   "out": "CommunityAttachResponse"
+  },
+  {
+   "in": "CommunityDetachRequest",
+   "method": "Detach",
+   "out": "CommunityDetachResponse"
+  },
+  {
+   "in": "CommunityDetachManyRequest",
+   "method": "DetachMany",
+   "out": "CommunityDetachManyResponse"
+  },
+  {
+   "in": "CommunityLeaveRequest",
+   "method": "Leave",
+   "out": "CommunityLeaveResponse"
+  },
+  {
+   "in": "CommunityCreateRequest",
+   "method": "Create",
+   "out": "CommunityCreateResponse"
+  },
+  {
+   "in": "CommunityEditRequest",
+   "method": "Edit",
+   "out": "CommunityEditResponse"
+  },
+  {
+   "in": "CommunityDeleteRequest",
+   "method": "Delete",
+   "out": "CommunityDeleteResponse"
+  },
+  {
+   "in": "CommunityOwnerEditRequest",
+   "method": "OwnerEdit",
+   "out": "CommunityOwnerEditResponse"
+  },
+  {
+   "in": "CommunitySetDiscoverableRequest",
+   "method": "SetDiscoverable",
+   "out": "CommunitySetDiscoverableResponse"
+  },
+  {
+   "in": "CommunitySetNotificationDefaultRequest",
+   "method": "SetNotificationDefault",
+   "out": "CommunitySetNotificationDefaultResponse"
+  }
+ ],
+ "root.CommunityLogGrpcService": [
+  {
+   "in": "CommunityLogListRequest",
+   "method": "List",
+   "out": "CommunityLogListResponse"
+  }
+ ],
+ "root.CommunityMemberBanGrpcService": [
+  {
+   "in": "CommunityMemberBanCreateRequest",
+   "method": "Create",
+   "out": "CommunityMemberBanResponse"
+  },
+  {
+   "in": "CommunityMemberBanCreateBulkRequest",
+   "method": "CreateBulk",
+   "out": "CommunityMemberBanBulkResponse"
+  },
+  {
+   "in": "CommunityMemberBanDeleteRequest",
+   "method": "Delete",
+   "out": "CommunityMemberBanDeleteResponse"
+  },
+  {
+   "in": "CommunityMemberBanKickRequest",
+   "method": "Kick",
+   "out": "CommunityMemberBanKickResponse"
+  },
+  {
+   "in": "CommunityMemberBanKickBulkRequest",
+   "method": "KickBulk",
+   "out": "CommunityMemberBanKickBulkResponse"
+  },
+  {
+   "in": "CommunityMemberBanListRequest",
+   "method": "List",
+   "out": "CommunityMemberBanListResponse"
+  },
+  {
+   "in": "CommunityMemberBanGetRequest",
+   "method": "Get",
+   "out": "CommunityMemberBanResponse"
+  }
+ ],
+ "root.CommunityMemberGrpcService": [
+  {
+   "in": "CommunityMemberGetRequest",
+   "method": "Get",
+   "out": "CommunityMemberExtendedResponse"
+  },
+  {
+   "in": "CommunityMemberListRequest",
+   "method": "List",
+   "out": "CommunityMemberExtendedListResponse"
+  },
+  {
+   "in": "CommunityMemberListAllRequest",
+   "method": "ListAll",
+   "out": "CommunityMemberExtendedListResponse"
+  },
+  {
+   "in": "CommunityMemberSearchRequest",
+   "method": "Search",
+   "out": "CommunityMemberSearchResponse"
+  },
+  {
+   "in": "CommunityMemberEditRequest",
+   "method": "Edit",
+   "out": "CommunityMemberEditResponse"
+  },
+  {
+   "in": "CommunityMemberMoveRequest",
+   "method": "Move",
+   "out": "CommunityMemberMoveResponse"
+  },
+  {
+   "in": "CommunityMemberSetFavoriteRequest",
+   "method": "SetFavorite",
+   "out": "CommunityMemberSetFavoriteResponse"
+  },
+  {
+   "in": "CommunityMemberSetAgeVerifiedRequest",
+   "method": "SetAgeVerified",
+   "out": "CommunityMemberSetAgeVerifiedResponse"
+  },
+  {
+   "in": "CommunityMemberSetNotificationSettingRequest",
+   "method": "SetNotificationSetting",
+   "out": "CommunityMemberSetNotificationSettingResponse"
+  }
+ ],
+ "root.CommunityMemberInviteGrpcService": [
+  {
+   "in": "CommunityMemberInviteCreateRequest",
+   "method": "Create",
+   "out": "CommunityMemberInviteResponse"
+  },
+  {
+   "in": "CommunityMemberInviteRespondRequest",
+   "method": "Respond",
+   "out": "CommunityMemberInviteRespondResponse"
+  },
+  {
+   "in": "CommunityMemberInviteLinkJoinRequest",
+   "method": "LinkJoin",
+   "out": "CommunityMemberInviteLinkJoinResponse"
+  },
+  {
+   "in": "CommunityMemberInviteDeleteRequest",
+   "method": "Delete",
+   "out": "CommunityMemberInviteDeleteResponse"
+  },
+  {
+   "in": "CommunityMemberInviteGetRequest",
+   "method": "Get",
+   "out": "CommunityMemberInviteResponse"
+  },
+  {
+   "in": "CommunityMemberInviteListRequest",
+   "method": "List",
+   "out": "CommunityMemberInviteListResponse"
+  }
+ ],
+ "root.CommunityMemberRoleGrpcService": [
+  {
+   "in": "CommunityMemberRoleAddRequest",
+   "method": "Add",
+   "out": "CommunityMemberRoleAddResponse"
+  },
+  {
+   "in": "CommunityMemberRoleListRequest",
+   "method": "List",
+   "out": "CommunityMemberRoleListResponse"
+  },
+  {
+   "in": "CommunityMemberRoleRemoveRequest",
+   "method": "Remove",
+   "out": "CommunityMemberRoleRemoveResponse"
+  },
+  {
+   "in": "CommunityMemberRoleSetPrimaryRequest",
+   "method": "SetPrimary",
+   "out": "CommunityMemberRoleSetPrimaryResponse"
+  },
+  {
+   "in": "CommunityMemberRoleAddSelfRequest",
+   "method": "AddSelf",
+   "out": "CommunityMemberRoleAddSelfResponse"
+  },
+  {
+   "in": "CommunityMemberRoleRemoveSelfRequest",
+   "method": "RemoveSelf",
+   "out": "CommunityMemberRoleRemoveSelfResponse"
+  }
+ ],
+ "root.CommunityRoleGrpcService": [
+  {
+   "in": "CommunityRoleCreateRequest",
+   "method": "Create",
+   "out": "CommunityRoleCreateResponse"
+  },
+  {
+   "in": "CommunityRoleEditRequest",
+   "method": "Edit",
+   "out": "CommunityRoleEditResponse"
+  },
+  {
+   "in": "CommunityRoleMoveRequest",
+   "method": "Move",
+   "out": "CommunityRoleMoveResponse"
+  },
+  {
+   "in": "CommunityRoleDeleteRequest",
+   "method": "Delete",
+   "out": "CommunityRoleDeleteResponse"
+  },
+  {
+   "in": "CommunityRoleListRequest",
+   "method": "List",
+   "out": "CommunityRoleListResponse"
+  },
+  {
+   "in": "CommunityRoleGetRequest",
+   "method": "Get",
+   "out": "CommunityRoleResponse"
+  }
+ ],
+ "root.DirectMessageGrpcService": [
+  {
+   "in": "DirectMessageListRequest",
+   "method": "List",
+   "out": "DirectMessageListResponse"
+  },
+  {
+   "in": "DirectMessageCreateRequest",
+   "method": "Create",
+   "out": "DirectMessageCreateResponse"
+  },
+  {
+   "in": "DirectMessageAddMembersRequest",
+   "method": "AddMembers",
+   "out": "DirectMessageAddMembersResponse"
+  },
+  {
+   "in": "DirectMessageFindRequest",
+   "method": "Find",
+   "out": "DirectMessageFindResponse"
+  },
+  {
+   "in": "DirectMessageDeleteUserRequest",
+   "method": "RemoveUser",
+   "out": "DirectMessageDeleteUserResponse"
+  },
+  {
+   "in": "DirectMessageRingDeclineRequest",
+   "method": "RingDecline",
+   "out": "DirectMessageRingDeclineResponse"
+  },
+  {
+   "in": "DirectMessageSetNotificationSettingRequest",
+   "method": "SetNotificationSetting",
+   "out": "DirectMessageSetNotificationSettingResponse"
+  }
+ ],
+ "root.DirectoryGrpcService": [
+  {
+   "in": "DirectoryCreateRequest",
+   "method": "Create",
+   "out": "DirectoryCreateResponse"
+  },
+  {
+   "in": "DirectoryEditRequest",
+   "method": "Edit",
+   "out": "DirectoryEditResponse"
+  },
+  {
+   "in": "DirectoryMoveRequest",
+   "method": "Move",
+   "out": "DirectoryMoveResponse"
+  },
+  {
+   "in": "DirectoryDeleteRequest",
+   "method": "Delete",
+   "out": "DirectoryDeleteResponse"
+  },
+  {
+   "in": "DirectoryGetRequest",
+   "method": "Get",
+   "out": "DirectoryGetResponse"
+  },
+  {
+   "in": "DirectoryListRequest",
+   "method": "List",
+   "out": "DirectoryListResponse"
+  },
+  {
+   "in": "DirectoryGetAllRequest",
+   "method": "GetAll",
+   "out": "DirectoryGetAllResponse"
+  },
+  {
+   "in": "DirectoryListAllRequest",
+   "method": "ListAll",
+   "out": "DirectoryListAllResponse"
+  }
+ ],
+ "root.FileGrpcService": [
+  {
+   "in": "FileCreateRequest",
+   "method": "Create",
+   "out": "FileCreateResponse"
+  },
+  {
+   "in": "FileEditRequest",
+   "method": "Edit",
+   "out": "FileEditResponse"
+  },
+  {
+   "in": "FileMoveRequest",
+   "method": "Move",
+   "out": "FileMoveResponse"
+  },
+  {
+   "in": "FileSearchRequest",
+   "method": "Search",
+   "out": "FileSearchResponse"
+  },
+  {
+   "in": "FileSearchCommunityRequest",
+   "method": "SearchCommunity",
+   "out": "FileSearchCommunityResponse"
+  },
+  {
+   "in": "FileDeleteRequest",
+   "method": "Delete",
+   "out": "FileDeleteResponse"
+  },
+  {
+   "in": "FileListRequest",
+   "method": "List",
+   "out": "FileListResponse"
+  },
+  {
+   "in": "FileGetRequest",
+   "method": "Get",
+   "out": "FileResponse"
+  },
+  {
+   "in": "FileDownloadRequest",
+   "method": "Download",
+   "out": "FileDownloadResponse"
+  }
+ ],
+ "root.FriendshipGroupGrpcService": [
+  {
+   "in": "FriendshipGroupCreateRequest",
+   "method": "Create",
+   "out": "FriendshipGroupCreateResponse"
+  },
+  {
+   "in": "FriendshipGroupDeleteRequest",
+   "method": "Delete",
+   "out": "FriendshipGroupDeleteResponse"
+  },
+  {
+   "in": "FriendshipGroupListRequest",
+   "method": "List",
+   "out": "FriendshipGroupListResponse"
+  },
+  {
+   "in": "FriendshipGroupEditRequest",
+   "method": "Edit",
+   "out": "FriendshipGroupEditResponse"
+  },
+  {
+   "in": "FriendshipGroupMoveRequest",
+   "method": "Move",
+   "out": "FriendshipGroupMoveResponse"
+  }
+ ],
+ "root.FriendshipGrpcService": [
+  {
+   "in": "FriendshipDeleteRequest",
+   "method": "Delete",
+   "out": "FriendshipDeleteResponse"
+  },
+  {
+   "in": "FriendshipMoveRequest",
+   "method": "Move",
+   "out": "FriendshipMoveResponse"
+  }
+ ],
+ "root.FriendshipInviteGrpcService": [
+  {
+   "in": "FriendshipInviteCreateRequest",
+   "method": "Create",
+   "out": "FriendshipInviteCreateResponse"
+  },
+  {
+   "in": "FriendshipInviteRespondRequest",
+   "method": "Respond",
+   "out": "FriendshipInviteRespondResponse"
+  }
+ ],
+ "root.LinkGrpcService": [
+  {
+   "in": "CommunityInviteLinkCreateRequest",
+   "method": "CommunityInviteLinkCreate",
+   "out": "CommunityInviteLinkCreateResponse"
+  },
+  {
+   "in": "CommunityInviteLinkGetRequest",
+   "method": "CommunityInviteLinkGet",
+   "out": "CommunityInviteLinkResponse"
+  },
+  {
+   "in": "CommunityInviteLinkGetInfoRequest",
+   "method": "CommunityInviteLinkGetInfo",
+   "out": "CommunityInviteLinkGetInfoResponse"
+  },
+  {
+   "in": "CommunityInviteLinkCodeExistsRequest",
+   "method": "CommunityInviteLinkCodeExists",
+   "out": "CommunityInviteLinkCodeExistsResponse"
+  },
+  {
+   "in": "CommunityInviteLinkDeleteRequest",
+   "method": "CommunityInviteLinkDelete",
+   "out": "CommunityInviteLinkDeleteResponse"
+  },
+  {
+   "in": "CommunityInviteLinkListRequest",
+   "method": "CommunityInviteLinkList",
+   "out": "CommunityInviteLinkListResponse"
+  },
+  {
+   "in": "CommunityInviteLinkListMineRequest",
+   "method": "CommunityInviteLinkListMine",
+   "out": "CommunityInviteLinkListMineResponse"
+  },
+  {
+   "in": "LinkCommunityChannelCreateRequest",
+   "method": "CommunityChannelCreate",
+   "out": "LinkCommunityChannelCreateResponse"
+  },
+  {
+   "in": "LinkCommunityMessageCreateRequest",
+   "method": "CommunityMessageCreate",
+   "out": "LinkCommunityMessageCreateResponse"
+  },
+  {
+   "in": "LinkCommunityAppCreateRequest",
+   "method": "CommunityAppCreate",
+   "out": "LinkCommunityAppCreateResponse"
+  }
+ ],
+ "root.NotificationGrpcService": [
+  {
+   "in": "NotificationRequest",
+   "method": "List",
+   "out": "NotificationListResponse"
+  },
+  {
+   "in": "NotificationCountUnviewedRequest",
+   "method": "CountUnviewed",
+   "out": "NotificationCountListResponse"
+  },
+  {
+   "in": "NotificationSetViewedRequest",
+   "method": "SetViewed",
+   "out": "NotificationSetViewedResponse"
+  },
+  {
+   "in": "NotificationSetContainerViewedRequest",
+   "method": "SetContainerViewed",
+   "out": "NotificationSetContainerViewedResponse"
+  },
+  {
+   "in": "NotificationSetAllViewedRequest",
+   "method": "SetAllViewed",
+   "out": "NotificationSetAllViewedResponse"
+  },
+  {
+   "in": "NotificationDeleteRequest",
+   "method": "Delete",
+   "out": "NotificationDeleteResponse"
+  },
+  {
+   "in": "NotificationDeleteAllRequest",
+   "method": "DeleteAll",
+   "out": "NotificationDeleteAllResponse"
+  }
+ ],
+ "root.SupportGrpcService": [
+  {
+   "in": "SupportCreateRequest",
+   "method": "Create",
+   "out": "SupportCreateResponse"
+  }
+ ],
+ "root.UserFavoriteGifGrpcService": [
+  {
+   "in": "UserFavoriteGifListRequest",
+   "method": "List",
+   "out": "UserFavoriteGifListResponse"
+  },
+  {
+   "in": "UserFavoriteGifCreateRequest",
+   "method": "Create",
+   "out": "UserFavoriteGifCreateResponse"
+  },
+  {
+   "in": "UserFavoriteGifDeleteRequest",
+   "method": "Delete",
+   "out": "UserFavoriteGifDeleteResponse"
+  }
+ ],
+ "root.UserGrpcService": [
+  {
+   "in": "UserGetSelfRequest",
+   "method": "GetSelf",
+   "out": "UserSelfResponse"
+  },
+  {
+   "in": "UserGetExtendedUsersByIdRequest",
+   "method": "GetExtendedUsersById",
+   "out": "UserListResponse"
+  },
+  {
+   "in": "UserGetExtendedUsersByUsernameRequest",
+   "method": "GetExtendedUsersByUsername",
+   "out": "UserListResponse"
+  },
+  {
+   "in": "UserSignInRequest",
+   "method": "SignIn",
+   "out": "UserTokenResponse"
+  },
+  {
+   "in": "UserSetMaxOnlineStatusRequest",
+   "method": "SetMaxOnlineStatus",
+   "out": "UserSetMaxOnlineStatusResponse"
+  },
+  {
+   "in": "UserSetDeviceOnlineStatusRequest",
+   "method": "SetDeviceOnlineStatus",
+   "out": "UserSetDeviceOnlineStatusResponse"
+  },
+  {
+   "in": "UserGetNewHubserverRequest",
+   "method": "GetNewHubserverEndpoint",
+   "out": "HubServerEndpointResponse"
+  },
+  {
+   "in": "UserSignUpRequest",
+   "method": "SignUp",
+   "out": "UserSignUpResponse"
+  },
+  {
+   "in": "UserSignUpPasswordlessRequest",
+   "method": "SignUpPasswordless",
+   "out": "UserSignUpPasswordlessResponse"
+  },
+  {
+   "in": "UserSignOutRequest",
+   "method": "SignOut",
+   "out": "UserSignOutResponse"
+  },
+  {
+   "in": "UserSetPasswordRequest",
+   "method": "SetPassword",
+   "out": "UserSetPasswordResponse"
+  },
+  {
+   "in": "UserForgotPasswordRequest",
+   "method": "ForgotPassword",
+   "out": "UserForgotPasswordResponse"
+  },
+  {
+   "in": "UserForgotUsernameRequest",
+   "method": "ForgotUsername",
+   "out": "UserForgotUsernameResponse"
+  },
+  {
+   "in": "UserResetPasswordRequest",
+   "method": "ResetPassword",
+   "out": "UserResetPasswordResponse"
+  },
+  {
+   "in": "UserSetEmailVerificationCodeRequest",
+   "method": "SetEmailVerificationCode",
+   "out": "UserSetEmailVerificationCodeResponse"
+  },
+  {
+   "in": "UserResendEmailVerificationCodeRequest",
+   "method": "ResendEmailVerificationCode",
+   "out": "UserResendEmailVerificationCodeResponse"
+  },
+  {
+   "in": "UserSetUsernameRequest",
+   "method": "SetUsername",
+   "out": "UserSetUsernameResponse"
+  },
+  {
+   "in": "UserSetProfilePictureRequest",
+   "method": "SetProfilePicture",
+   "out": "UserSetProfilePictureResponse"
+  },
+  {
+   "in": "UserSetDescriptionRequest",
+   "method": "SetDescription",
+   "out": "UserSetDescriptionResponse"
+  },
+  {
+   "in": "UserSetBannerRequest",
+   "method": "SetBanner",
+   "out": "UserSetBannerResponse"
+  },
+  {
+   "in": "UserSetUserDefinedStatusRequest",
+   "method": "SetUserDefinedStatus",
+   "out": "UserSetUserDefinedStatusResponse"
+  },
+  {
+   "in": "UserSendEmailChangeCodeRequest",
+   "method": "SendEmailChangeCode",
+   "out": "UserSendEmailChangeCodeResponse"
+  },
+  {
+   "in": "UserSetEmailChangeCodeRequest",
+   "method": "SetEmailChangeCode",
+   "out": "UserSetEmailChangeCodeResponse"
+  },
+  {
+   "in": "UserSetCommunityInviteRequirementRequest",
+   "method": "SetCommunityInviteRequirement",
+   "out": "UserSetCommunityInviteRequirementResponse"
+  },
+  {
+   "in": "UserSetDirectMessageInviteRequirementRequest",
+   "method": "SetDirectMessageInviteRequirement",
+   "out": "UserSetDirectMessageInviteRequirementResponse"
+  },
+  {
+   "in": "UserSetFriendshipInviteRequirementRequest",
+   "method": "SetFriendshipInviteRequirement",
+   "out": "UserSetFriendshipInviteRequirementResponse"
+  },
+  {
+   "in": "UserFindByUsernameRequest",
+   "method": "FindByUsername",
+   "out": "UserShortListResponse"
+  },
+  {
+   "in": "UserConnectionBetweenRequest",
+   "method": "GetConnectionBetween",
+   "out": "UserConnectionResponse"
+  },
+  {
+   "in": "UserGetNoteRequest",
+   "method": "GetUserNote",
+   "out": "UserNoteResponse"
+  },
+  {
+   "in": "UserSetNoteRequest",
+   "method": "SetUserNote",
+   "out": "UserSetNoteResponse"
+  },
+  {
+   "in": "UserSetMobileNotificationTokenRequest",
+   "method": "SetMobileNotificationToken",
+   "out": "UserSetMobileNotificationTokenResponse"
+  },
+  {
+   "in": "UserDeleteRequest",
+   "method": "Delete",
+   "out": "UserDeleteResponse"
+  },
+  {
+   "in": "UserBlockListRequest",
+   "method": "BlockList",
+   "out": "UserBlockListResponse"
+  },
+  {
+   "in": "UserBlockCreateRequest",
+   "method": "BlockCreate",
+   "out": "UserBlockCreateResponse"
+  },
+  {
+   "in": "UserBlockDeleteRequest",
+   "method": "BlockDelete",
+   "out": "UserBlockDeleteResponse"
+  },
+  {
+   "in": "UserFlagRequest",
+   "method": "Flag",
+   "out": "UserFlagResponse"
+  },
+  {
+   "in": "UserRefreshTokenRequest",
+   "method": "RefreshToken",
+   "out": "UserRefreshTokenResponse"
+  }
+ ],
+ "root.UserThemeGrpcService": [
+  {
+   "in": "UserThemeListRequest",
+   "method": "List",
+   "out": "UserThemeListResponse"
+  },
+  {
+   "in": "UserThemeSaveRequest",
+   "method": "Save",
+   "out": "UserThemeSaveResponse"
+  },
+  {
+   "in": "UserThemeDeleteRequest",
+   "method": "Delete",
+   "out": "UserThemeDeleteResponse"
+  },
+  {
+   "in": "UserThemeSetActiveRequest",
+   "method": "SetActive",
+   "out": "UserThemeSetActiveResponse"
+  }
+ ],
+ "root.WebRtcGrpcService": [
+  {
+   "in": "WebRtcSetMuteAndDeafenRequest",
+   "method": "SetMuteAndDeafen",
+   "out": "WebRtcSetMuteAndDeafenResponse"
+  },
+  {
+   "in": "WebRtcSetPauseRequest",
+   "method": "SetPause",
+   "out": "WebRtcSetPauseResponse"
+  },
+  {
+   "in": "WebRtcSetMuteAndDeafenOtherRequest",
+   "method": "SetMuteAndDeafenOther",
+   "out": "WebRtcSetMuteAndDeafenOtherResponse"
+  },
+  {
+   "in": "WebRtcGetIceInfoRequest",
+   "method": "GetIceInfo",
+   "out": "WebRtcGetIceInfoResponse"
+  },
+  {
+   "in": "WebRtcSessionCreateRequest",
+   "method": "SessionCreate",
+   "out": "WebRtcSessionCreateResponse"
+  },
+  {
+   "in": "WebRtcRenegotiateRequest",
+   "method": "Renegotiate",
+   "out": "WebRtcRenegotiateResponse"
+  },
+  {
+   "in": "WebRtcTracksCreateRequest",
+   "method": "TracksCreate",
+   "out": "WebRtcTracksCreateResponse"
+  },
+  {
+   "in": "WebRtcDataChannelsCreateRequest",
+   "method": "DataChannelsCreate",
+   "out": "WebRtcDataChannelsCreateResponse"
+  },
+  {
+   "in": "WebRtcTracksCloseRequest",
+   "method": "TracksClose",
+   "out": "WebRtcTracksCloseResponse"
+  },
+  {
+   "in": "WebRtcDetachRequest",
+   "method": "Detach",
+   "out": "WebRtcDetachResponse"
+  },
+  {
+   "in": "WebRtcKickRequest",
+   "method": "Kick",
+   "out": "WebRtcKickResponse"
+  },
+  {
+   "in": "WebRtcListRequest",
+   "method": "List",
+   "out": "WebRtcListResponse"
+  },
+  {
+   "in": "WebRtcListMineRequest",
+   "method": "ListMine",
+   "out": "WebRtcListMineResponse"
+  },
+  {
+   "in": "WebRtcListTracksForSessionRequest",
+   "method": "ListTracksForSession",
+   "out": "WebRtcListTracksForSessionResponse"
+  }
+ ],
+ "root.v2.MessageGrpcService": [
+  {
+   "in": "MessageCreateRequest",
+   "method": "Create",
+   "out": "MessageCreateResponse"
+  },
+  {
+   "in": "MessageDeleteRequest",
+   "method": "Delete",
+   "out": "MessageDeleteResponse"
+  },
+  {
+   "in": "MessageEditRequest",
+   "method": "Edit",
+   "out": "MessageEditResponse"
+  },
+  {
+   "in": "MessageGetRequest",
+   "method": "Get",
+   "out": "MessageGetResponse"
+  },
+  {
+   "in": "MessageListRequest",
+   "method": "List",
+   "out": "MessageListResponse"
+  },
+  {
+   "in": "MessageFlagRequest",
+   "method": "Flag",
+   "out": "MessageFlagResponse"
+  },
+  {
+   "in": "MessagePinCreateRequest",
+   "method": "PinCreate",
+   "out": "MessagePinCreateResponse"
+  },
+  {
+   "in": "MessagePinDeleteRequest",
+   "method": "PinDelete",
+   "out": "MessagePinDeleteResponse"
+  },
+  {
+   "in": "MessagePinListRequest",
+   "method": "PinList",
+   "out": "MessagePinListResponse"
+  },
+  {
+   "in": "MessageReactionCreateRequest",
+   "method": "ReactionCreate",
+   "out": "MessageReactionCreateResponse"
+  },
+  {
+   "in": "MessageReactionDeleteRequest",
+   "method": "ReactionDelete",
+   "out": "MessageReactionDeleteResponse"
+  },
+  {
+   "in": "MessageReactionDeleteFullRequest",
+   "method": "ReactionDeleteFull",
+   "out": "MessageReactionDeleteFullResponse"
+  },
+  {
+   "in": "MessageSearchRequest",
+   "method": "Search",
+   "out": "MessageSearchResponse"
+  },
+  {
+   "in": "MessageSearchContainersRequest",
+   "method": "SearchContainer",
+   "out": "MessageSearchContainersResponse"
+  },
+  {
+   "in": "MessageSetTypingIndicatorRequest",
+   "method": "SetTypingIndicator",
+   "out": "MessageSetTypingIndicatorResponse"
+  },
+  {
+   "in": "MessageSetViewTimeRequest",
+   "method": "SetViewTime",
+   "out": "MessageSetViewTimeResponse"
+  }
+ ]
+}

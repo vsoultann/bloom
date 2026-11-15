@@ -1,0 +1,9 @@
+.gradle/
+build/
+local.properties
+core/target/
+app/src/main/jniLibs/
+*.apk
+*.jks
+keystore.properties
+docs/screenshots/*.raw
