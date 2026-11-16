@@ -14,8 +14,8 @@ android {
         applicationId = (project.findProperty("bloomId") as String?) ?: "app.bloom"
         minSdk = 31          // Material You dynamic colour + RenderEffect blur
         targetSdk = 37
-        versionCode = 8
-        versionName = "0.3.5"
+        versionCode = 9
+        versionName = "0.3.6"
         ndk { abiFilters += "arm64-v8a" }
     }
 

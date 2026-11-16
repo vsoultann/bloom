@@ -871,6 +871,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { runCatching { Core.setSetting("last_channel", id) } }
         replyingTo = null
         editing = null
+        listEpoch++          // clearing is a swap too: nothing may fade out over the next chat
         messages.clear()
         loadingMessages = true
         noMoreHistory = false

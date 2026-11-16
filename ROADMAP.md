@@ -250,6 +250,9 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [ ] Live call test (joining an empty voice channel) — not run yet: phone was in use
 - [ ] Now playing: Root rejects the status with error 300 (too long with the hidden part) — needs a shorter encoding / budget
 
+## 24. Ghost overlap, for real (2026-11-17)
+- [x] Opening a chat cleared the list without counting as a swap, so the previous messages faded out in place under the new ones (4h-old messages over new ones, fading video preview). Clearing now bumps the swap epoch, each chat gets its own list (key per chat), and messages never fade out over others (fadeOutSpec null)
+
 ## Known bugs to check
 - [ ] Password field possibly cleared after tapping the eye (seen twice while the user was also using the phone)
 - [ ] Tapping a channel once opened a message author's profile instead

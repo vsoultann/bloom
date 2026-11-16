@@ -223,6 +223,8 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
             val reversed by remember { derivedStateOf { msgs.asReversed().toList() } }
             val d = androidx.compose.ui.platform.LocalDensity.current
             CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(d.density, d.fontScale * vm.textScale)) {
+            // a fresh list per chat: nothing can animate across from the previous one
+            key(vm.selectedChannelId) {
             LazyColumn(
                 state = listState,
                 reverseLayout = true,
@@ -243,7 +245,7 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
                     // a new day starts here (or this is the very first message)
                     val newDay = if (prev == null) vm.noMoreHistory else !sameDay(prev.ts, m.ts)
                     val grouped = !newDay && prev != null && prev.authorId == m.authorId && m.ts - prev.ts < 300 && m.replyTo == null
-                    if (newDay) Column(Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = if (settled) Motion.effects() else null)) {
+                    if (newDay) Column(Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = null)) {
                         DateDivider(m.ts)
                         MessageRow(
                             vm, m, grouped, reversed, Modifier,
@@ -256,7 +258,7 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
                     } else MessageRow(
                         vm, m, grouped, reversed,
                         // existing messages glide (no bounce) as new ones arrive; the entrance itself is in MessageBody
-                        Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = if (settled) Motion.effects() else null),
+                        Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = null),
                         onJump = { rid ->
                             val idx = reversed.indexOfFirst { it.id == rid }
                             if (idx >= 0) jumpScope.launch { listState.animateScrollToItem(idx, -200); vm.flash(rid) }
@@ -273,6 +275,7 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
                     }
                 }
             }
+            } // key(chat)
             }
         }
 
