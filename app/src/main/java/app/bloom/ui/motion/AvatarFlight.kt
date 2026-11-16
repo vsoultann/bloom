@@ -10,6 +10,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -17,66 +18,75 @@ import androidx.compose.ui.unit.IntOffset
 import app.bloom.AppViewModel
 import app.bloom.ui.components.Avatar
 import app.bloom.ui.theme.Ui
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 /**
- * Shared-element "flight" for profile pictures: tapping one somewhere (rail, chat, top
- * bar) flies a copy to where it lands (the You card, the profile sheet), moving and
- * scaling along a fluid spring, while the real ones hide until it lands.
+ * Shared-element "flight" for a profile picture: the picture leaves where you tapped it
+ * and travels — moving and scaling along a fluid spring — onto the spot where it belongs
+ * on the next screen. The landing spot is tracked live every frame, so it lands exactly
+ * even while that screen is still sliding/scaling into place.
  */
 object AvatarFlight {
     var userId by mutableStateOf<Long?>(null); private set
-    /** where the tap happened / where it should land, in window coordinates */
     var from by mutableStateOf<Rect?>(null); private set
-    var to by mutableStateOf<Rect?>(null)
+    /** the landing spot's live coordinates (read every frame) */
+    var target by mutableStateOf<LayoutCoordinates?>(null)
     val progress = Animatable(1f)
-    /** true while a copy is in the air (the destination hides its own picture) */
-    val flying get() = userId != null && progress.value < 1f
+    var inAir by mutableStateOf(false); private set
 
     fun launch(user: Long, source: Rect?) {
         if (source == null || !Ui.animations) { userId = null; return }
-        userId = user; from = source; to = null
+        userId = user; from = source; target = null; inAir = true
     }
 
-    fun land() { userId = null; from = null; to = null }
+    fun land() { inAir = false; userId = null; from = null; target = null }
 }
 
-/** Remembers where this picture is so a flight can start from it. */
-fun Modifier.flightSource(onBounds: (Rect) -> Unit): Modifier = onGloballyPositioned { onBounds(it.boundsInWindow()) }
+/** Remembers where this picture is so a flight can start from it; hides it while its copy flies. */
+fun Modifier.flightSource(user: Long, onBounds: (Rect) -> Unit): Modifier =
+    onGloballyPositioned { onBounds(it.boundsInWindow()) }
+        .graphicsLayer { alpha = if (AvatarFlight.inAir && AvatarFlight.userId == user) 0f else 1f }
 
-/** Marks a landing spot for [user]; it stays invisible while the copy is flying in. */
-@Composable
-fun Modifier.flightTarget(user: Long): Modifier {
-    val active = AvatarFlight.userId == user
-    return this
-        .onGloballyPositioned { if (active && AvatarFlight.to == null) AvatarFlight.to = it.boundsInWindow() }
-        .graphicsLayer { alpha = if (active && AvatarFlight.progress.value < 1f) 0f else 1f }
-}
+/** Marks the landing spot for [user]; it stays hidden until the copy arrives. */
+fun Modifier.flightTarget(user: Long): Modifier =
+    onGloballyPositioned { if (AvatarFlight.userId == user && AvatarFlight.inAir) AvatarFlight.target = it }
+        .graphicsLayer { alpha = if (AvatarFlight.inAir && AvatarFlight.userId == user) 0f else 1f }
 
-/** Draws the flying copy; put it last in the root Box so it's on top of everything. */
+/** Draws the flying copy; put it last in the root so it's above everything. */
 @Composable
 fun AvatarFlightOverlay(vm: AppViewModel) {
-    val user = AvatarFlight.userId?.let { vm.users[it] ?: vm.me?.takeIf { m -> m.id == it } } ?: return
+    val uid = AvatarFlight.userId ?: return
+    val user = vm.users[uid] ?: vm.me?.takeIf { it.id == uid } ?: return
     val from = AvatarFlight.from ?: return
-    val to = AvatarFlight.to
-    LaunchedEffect(user.id, to) {
-        if (to == null) return@LaunchedEffect
+    val target = AvatarFlight.target
+    // where the landing spot is right now (follows sliding / scaling parents)
+    var to by remember { mutableStateOf<Rect?>(null) }
+    LaunchedEffect(target) {
+        if (target == null) return@LaunchedEffect
+        launch {
+            while (AvatarFlight.inAir) {
+                withFrameNanos { }
+                if (target.isAttached) to = target.boundsInWindow()
+            }
+        }
         AvatarFlight.progress.snapTo(0f)
-        // a soft, slightly lively spring: moves fast, settles without wobbling about
-        AvatarFlight.progress.animateTo(1f, spring(dampingRatio = 0.78f, stiffness = 260f))
+        AvatarFlight.progress.animateTo(1f, spring(dampingRatio = 0.82f, stiffness = 230f))
         AvatarFlight.land()
     }
-    if (to == null) return
+    // nothing to land on yet (or it never appears): give up quietly after a moment
+    LaunchedEffect(uid) { kotlinx.coroutines.delay(1500); if (AvatarFlight.target == null) AvatarFlight.land() }
+    val dest = to ?: return
     val p = AvatarFlight.progress.value
     val density = LocalDensity.current
-    // the arc: x eases in a little later than y, so the path curves instead of a straight line
-    val px = (p * p * (3 - 2 * p))
-    val left = from.left + (to.left - from.left) * px
-    val top = from.top + (to.top - from.top) * p
-    val size = from.width + (to.width - from.width) * p
+    // a gentle arc: sideways motion trails the vertical a little
+    val px = p * p * (3 - 2 * p)
+    val left = from.left + (dest.left - from.left) * px
+    val top = from.top + (dest.top - from.top) * p
+    val size = from.width + (dest.width - from.width) * p
     Box(
         Modifier.offset { IntOffset(left.roundToInt(), top.roundToInt()) }
-            .graphicsLayer { shadowElevation = 18f * (1f - kotlin.math.abs(p - 0.5f) * 2f); shape = CircleShape; clip = false },
+            .graphicsLayer { shadowElevation = 22f * (1f - kotlin.math.abs(p - 0.5f) * 2f); shape = CircleShape },
     ) {
         Avatar(user.displayName, user.hue, with(density) { size.toDp() }, Modifier.size(with(density) { size.toDp() }), userId = user.id, shape = CircleShape)
     }

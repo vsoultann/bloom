@@ -247,9 +247,10 @@ internal fun ServerRail(vm: AppViewModel) {
         var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
         val src = remember { MutableInteractionSource() }
         Box(
+            // not clipped (keeps the status dot whole); hides while its copy is flying
             Modifier.align(Alignment.BottomCenter).padding(bottom = bottomInset + 14.dp).pressScale(src)
-                .flightSource { bounds = it }
-                .clip(CircleShape).clickable(src, null) { AvatarFlight.launch(me.id, bounds); vm.screen = Screen.You },
+                .flightSource(me.id) { bounds = it }
+                .clickable(src, null) { AvatarFlight.launch(me.id, bounds); vm.openYou() },
         ) {
             Avatar(me.displayName, me.hue, 52.dp, userId = me.id, status = me.status)
         }

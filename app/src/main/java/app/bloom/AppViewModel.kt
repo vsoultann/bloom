@@ -817,6 +817,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         openChannel(id)
     }
 
+    /** Opens the You page and closes the side panel so the page (and the flying avatar) is in view. */
+    fun openYou() { screen = Screen.You; channelOpens++ }
+
     fun openChannel(id: Long) {
         selectChannel(id)
         channelOpens++

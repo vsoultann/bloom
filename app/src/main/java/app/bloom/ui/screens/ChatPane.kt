@@ -304,8 +304,11 @@ private fun TopBar(vm: AppViewModel, haze: HazeState, onMenu: () -> Unit, modifi
         val dmPeople = dm?.userIds?.mapNotNull { vm.users[it] }.orEmpty()
         when {
             // DMs: their picture with a status ring/dot; groups: stacked pictures
-            dmPeople.size == 1 -> Box(Modifier.clip(CircleShape).clickable { vm.openProfile(dmPeople[0].id) }) {
-                Avatar(dmPeople[0].displayName, dmPeople[0].hue, 36.dp, userId = dmPeople[0].id, status = dmPeople[0].status)
+            dmPeople.size == 1 -> Box(
+                // not clipped: the status dot sits on the edge and must stay whole
+                Modifier.clickable(remember { MutableInteractionSource() }, null) { vm.openProfile(dmPeople[0].id) },
+            ) {
+                Avatar(dmPeople[0].displayName, dmPeople[0].hue, 38.dp, userId = dmPeople[0].id, status = dmPeople[0].status)
             }
             dmPeople.size > 1 -> Row(horizontalArrangement = Arrangement.spacedBy((-14).dp)) {
                 dmPeople.take(3).forEach { u -> Avatar(u.displayName, u.hue, 30.dp, userId = u.id) }
@@ -636,7 +639,10 @@ private fun Reactions(vm: AppViewModel, m: Message) {
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val custom = vm.customEmoji.firstOrNull { it.id == r.emoji }
+                        // "custom:ID:name:URL" from the core (any server's emoji, with its picture)
+                        val rich = r.emoji.takeIf { it.startsWith("custom:") }?.split(':', limit = 4)
                         when {
+                            rich != null && rich.size == 4 -> coil3.compose.AsyncImage(rich[3], rich[2], Modifier.size(20.dp))
                             custom != null -> coil3.compose.AsyncImage(custom.url, custom.shortcode, Modifier.size(20.dp))
                             r.emoji.length >= 20 && r.emoji.all { it.isLetterOrDigit() || it == '-' || it == '_' } -> Icon(Icons.Rounded.EmojiEmotions, null, Modifier.size(18.dp))
                             else -> if (app.bloom.ui.theme.Ui.emojiPack == "system") Text(r.emoji) else EmojiGlyph(r.emoji, Modifier.size(20.dp))

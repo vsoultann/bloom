@@ -219,6 +219,13 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [~] Jumbo emoji for emoji-only messages; direction-aware server switch
 - [x] Released v0.3.0
 
+## 20. Round 11 (2026-11-16)
+- [x] Custom emoji from any server: Root's emoji Resolve answers with a map (id → image), Bloom decoded it wrongly; now resolves, and pairs plain `:Name:` codes with the emoji the message lists (live: 53 rendered, 0 raw left; 73/73 custom reactions with pictures)
+- [x] Flag emoji names (:flagca: → 🇨🇦) in bios and messages
+- [~] Avatar flight: tracks the landing spot live (it moved with the sliding panel before → flew off-screen); panel closes; source hides while flying
+- [~] Status dot no longer cut off (DM top bar, rail avatar weren't supposed to be clipped)
+- [x] Released v0.3.1
+
 ## Known bugs to check
 - [ ] Password field possibly cleared after tapping the eye (seen twice while the user was also using the phone)
 - [ ] Tapping a channel once opened a message author's profile instead
