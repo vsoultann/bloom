@@ -113,6 +113,11 @@ fn by_desc(name: &str) -> Option<&'static str> {
 
 /// Root's ":name:" (optionally "_toneN") → the emoji character(s).
 pub fn from_root_name(name: &str) -> Option<String> {
+    // flags: Root writes :flagca: / :flag_ca: → 🇨🇦 (regional indicator pair)
+    let cc = name.strip_prefix("flag_").or_else(|| name.strip_prefix("flag")).filter(|c| c.len() == 2 && c.chars().all(|x| x.is_ascii_alphabetic()));
+    if let Some(cc) = cc {
+        return Some(cc.to_ascii_uppercase().chars().filter_map(|c| char::from_u32(0x1F1E6 + (c as u32 - 'A' as u32))).collect());
+    }
     let (base, tone) = match name.rsplit_once("_tone") {
         Some((b, t)) if t.len() == 1 && ("1"..="5").contains(&t) => (b, Some(t.parse::<u32>().ok()?)),
         _ => (name, None),
@@ -205,6 +210,7 @@ mod tests {
         assert_eq!(from_root_name("thumbsup_tone2").as_deref(), Some("👍🏼"));
         assert!(from_root_name("woman_in_lotus_position_tone2").is_some());
         assert!(from_root_name("frowning2").is_some());
+        assert_eq!(from_root_name("flagca").as_deref(), Some("🇨🇦"));
         assert_eq!(encode_for_root("[x](root://emoji/abc) ok"), "[x](root://emoji/abc) ok");
         assert_eq!(hex_id("❤️"), "2764");
     }

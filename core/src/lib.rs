@@ -70,6 +70,7 @@ impl App {
             let snap = rootapi::Snapshot::load(&app.data_dir).unwrap_or_default();
             let mut rb = rootapi::RootBackend::from_snapshot(&s, app.dump_dir(), snap);
             rb.mark_bots();
+            rb.clean_emoji_names();
             app.backend = Box::new(rb);
             app.mode = Mode::Root;
         }

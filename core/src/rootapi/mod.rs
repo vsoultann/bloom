@@ -715,13 +715,15 @@ impl RootBackend {
         uris.sort();
         uris.dedup();
         self.resolve_assets(&uris);
-        let emoji_ids: Vec<String> = live
+        let mut emoji_ids: Vec<String> = live
             .iter()
             .flat_map(|m| messages::tokenize(&m.content).into_iter().filter_map(|t| match t {
                 messages::Token::Link { kind: "emoji", target, .. } if !target.starts_with(':') && messages::unicode_emoji(target).is_none() => Some(target.to_string()),
                 _ => None,
             }).collect::<Vec<_>>())
             .collect();
+        emoji_ids.extend(live.iter().flat_map(|m| Self::emoji_refs(m)));
+        emoji_ids.extend(live.iter().flat_map(|m| m.reactions.iter().filter_map(|r| Self::custom_reaction_id(&r.shortcode))));
         self.resolve_emoji(&emoji_ids);
         let mentioned: Vec<Id> = live
             .iter()
@@ -920,6 +922,15 @@ impl RootBackend {
         self.dms.sort_by_key(|d| std::cmp::Reverse(d.last_activity));
     }
 
+    /// Drops emoji names that a broken build learned from URLs ("https" etc.).
+    pub fn clean_emoji_names(&mut self) {
+        for (_, e) in self.emoji_cache.iter_mut() {
+            if e.1.len() < 2 || e.1.eq_ignore_ascii_case("http") || e.1.eq_ignore_ascii_case("https") { e.1.clear() }
+        }
+        // cached messages rendered by that build carry broken tokens: drop them, they refetch
+        for (_, list) in self.msgs.iter_mut() { list.retain(|m| !m.content.contains("⟦e⟦") && !m.content.contains("⟦e:https|") && !m.content.contains(":https:")) }
+    }
+
     /// Bots are GUID type 9 (Root "App" ids); applies to users from any source, incl. the snapshot.
     pub fn mark_bots(&mut self) {
         let ids: Vec<Id> = self.users.keys().copied().collect();
@@ -933,6 +944,42 @@ impl RootBackend {
     /// Debug: low byte of a user's high GUID half (Root encodes the id type there).
     pub fn debug_guid_type(&self, id: Id) -> String {
         self.ids.root(id).map(|(h, l)| format!("h{:02x}/{:02x}", h & 0xFF, (h >> 8) & 0xFF) + &format!(" l{:02x}", l >> 56)).unwrap_or_default()
+    }
+
+    /// Debug: raw Resolve response for one id
+    pub fn debug_resolve_raw(&mut self, id: &str) -> String {
+        let Some((h, l)) = parse_guid(id) else { return "bad id".into() };
+        let req = EmojiResolveReq { ids: vec![EmojiUuid { high64: h, low64: l }] };
+        match self.hub.raw("/root.CommunityEmojiGrpcService/Resolve", &prost::Message::encode_to_vec(&req)) {
+            Ok(body) => {
+                let payload = grpcweb::unframe(&body).ok().and_then(|(m, _)| m.into_iter().next()).unwrap_or_default();
+                let mut out = format!("{} bytes: ", payload.len());
+                for b in payload.iter().take(160) { if b.is_ascii_graphic() { out.push(*b as char) } else { out.push_str(&format!("\\x{:02x}", b)) } }
+                out
+            }
+            Err(e) => format!("err {e}"),
+        }
+    }
+
+    /// Debug: try to resolve one emoji id; returns (code, has_url)
+    pub fn debug_resolve(&mut self, id: &str) -> Option<(String, bool)> {
+        self.resolve_emoji(&[id.to_string()]);
+        self.emoji_cache.get(id).map(|(u, c)| (c.clone(), !u.is_empty()))
+    }
+
+    /// Custom emoji ids a message lists alongside its text (root://emoji/ID refs).
+    fn emoji_refs(m: &messages::RawMessage) -> Vec<String> {
+        m.assets.iter().filter_map(|a| a.uri.strip_prefix("root://emoji/")).filter(|id| !id.starts_with(':')).map(str::to_string).collect()
+    }
+
+    /// The custom emoji id inside a reaction code (":name:ID:" or a bare id), if any.
+    fn custom_reaction_id(code: &str) -> Option<String> {
+        let parts: Vec<&str> = code.trim_matches(':').split(':').collect();
+        match parts.as_slice() {
+            [_, id] if id.len() >= 20 => Some(id.to_string()),
+            [id] if id.len() >= 20 && !id.contains(' ') => Some(id.to_string()),
+            _ => None,
+        }
     }
 
     /// Bios use the same markup as messages (emoji, mentions, **bold**, …).
@@ -1029,24 +1076,60 @@ impl RootBackend {
             let (width, height) = self.asset_dims.get(&a.uri).copied().unwrap_or((0, 0));
             atts.push(Attachment { kind, name, url, href: None, width, height, preview });
         }
-        // plain :shortcode: custom emoji from this user's servers
+        // plain :shortcode: custom emoji: ones this message references (any server — Root
+        // lists them with the message), then the ones from your own servers
         let mut text = text.trim().to_string();
-        if text.contains(':') && !self.emoji_by_code.is_empty() {
-            text = self.replace_custom_shortcodes(&text);
+        let mut ref_ids: Vec<&str> = Vec::new();
+        for id in assets.iter().filter_map(|a| a.uri.strip_prefix("root://emoji/")).filter(|id| !id.starts_with(':')) {
+            if !ref_ids.contains(&id) { ref_ids.push(id) }
+        }
+        let mut local: HashMap<String, String> = HashMap::new();
+        // ids whose name we already know
+        for id in &ref_ids {
+            if let Some((url, code)) = self.emoji_cache.get(*id) { if !code.is_empty() { local.insert(code.clone(), url.clone()); } }
+        }
+        // the rest: unknown :codes: in the text, matched to the remaining ids in order
+        let mut unknown_codes: Vec<String> = Vec::new();
+        for c in shortcode_candidates(&text) {
+            if !local.contains_key(&c) && !self.emoji_by_code.contains_key(&c) && crate::emoji::lookup(&c).is_none() && !unknown_codes.contains(&c) { unknown_codes.push(c) }
+        }
+        let unnamed: Vec<&str> = ref_ids.iter().copied().filter(|id| self.emoji_cache.get(*id).is_some_and(|e| e.1.is_empty())).collect();
+        for (code, id) in unknown_codes.iter().zip(unnamed.iter()) {
+            if let Some((url, _)) = self.emoji_cache.get(*id).cloned() {
+                local.insert(code.clone(), url.clone());
+                if let Some(e) = self.emoji_cache.get_mut(*id) { e.1 = code.clone() }
+            }
+        }
+        if text.contains(':') && (!self.emoji_by_code.is_empty() || !local.is_empty()) {
+            text = self.replace_custom_shortcodes(&text, &local);
         }
         (text, atts)
     }
 
     /// `:name:` → inline custom emoji when one of your servers has that emoji.
-    fn replace_custom_shortcodes(&self, s: &str) -> String {
+    fn replace_custom_shortcodes(&self, s: &str, local: &HashMap<String, String>) -> String {
+        // leave Bloom's own ⟦…⟧ tokens (emoji, mentions) untouched
+        if s.contains('⟦') {
+            let mut out = String::with_capacity(s.len());
+            let mut rest = s;
+            while let Some(a) = rest.find('⟦') {
+                out.push_str(&self.replace_custom_shortcodes(&rest[..a], local));
+                match rest[a..].find('⟧') {
+                    Some(b) => { out.push_str(&rest[a..a + b + '⟧'.len_utf8()]); rest = &rest[a + b + '⟧'.len_utf8()..]; }
+                    None => { out.push_str(&rest[a..]); rest = ""; }
+                }
+            }
+            out.push_str(&self.replace_custom_shortcodes(rest, local));
+            return out;
+        }
         let mut out = String::with_capacity(s.len());
         let mut rest = s;
         while let Some(start) = rest.find(':') {
             out.push_str(&rest[..start]);
             let after = &rest[start + 1..];
             match after.find(':') {
-                Some(end) if end > 0 && end <= 48 && after[..end].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') => {
-                    match self.emoji_by_code.get(&after[..end]) {
+                Some(end) if end > 1 && end <= 48 && after[..end].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') && !after[end + 1..].starts_with("//") => {
+                    match local.get(&after[..end]).or_else(|| self.emoji_by_code.get(&after[..end])) {
                         Some(url) => {
                             out.push_str(&messages::emoji(url, &after[..end]));
                             rest = &after[end + 1..];
@@ -1125,14 +1208,12 @@ impl RootBackend {
         let req = EmojiResolveReq { ids: guids };
         let Ok(body) = self.hub.raw("/root.CommunityEmojiGrpcService/Resolve", &prost::Message::encode_to_vec(&req)) else { return };
         let payload = grpcweb::unframe(&body).ok().and_then(|(m, _)| m.into_iter().next()).unwrap_or_default();
-        let found: Vec<EmojiInfo> = wire::find_all(&payload, |e: &EmojiInfo| e.id.is_some() && !e.asset_uri.is_empty());
-        let uris: Vec<String> = found.iter().map(|e| e.asset_uri.clone()).collect();
-        self.resolve_assets(&uris);
-        for e in found {
-            let id = e.id.as_ref().unwrap();
-            if let Some((url, _)) = self.asset_cache.get(&e.asset_uri) {
-                self.emoji_cache.insert(guid_text(id.high64, id.low64), (url.clone(), e.shortcode.clone()));
-            }
+        // Resolve answers with a map: emoji id (long form) → image info (no names)
+        for (key, url, _, _, _) in parse_asset_map(&payload) {
+            let Some((h, l)) = parse_guid(&key) else { continue };
+            let id = guid_text(h, l);
+            let code = self.emoji_cache.get(&id).map(|e| e.1.clone()).unwrap_or_default();
+            self.emoji_cache.insert(id, (url, code));
         }
     }
 
@@ -1214,7 +1295,7 @@ impl RootBackend {
                 let Ok(r) = ReactionPacket::decode(p.body.as_slice()) else { return vec![] };
                 let (Some(mid), Some(uid)) = (r.message_id, r.user_id) else { return vec![] };
                 let added = !matches!(env.packet_type, 205 | 5802);
-                let emoji = Self::reaction_emoji(&r.shortcode);
+                let emoji = self.reaction_emoji(&r.shortcode);
                 vec![Event::Reaction { id: self.ids.local(mid.high64, mid.low64), emoji, user_id: self.ids.local(uid.high64, uid.low64), added }]
             }
             174 => {
@@ -1280,6 +1361,7 @@ impl RootBackend {
                 messages::Token::Link { kind: "emoji", target, .. } if !target.starts_with(':') && messages::unicode_emoji(target).is_none() => Some(target.to_string()),
                 _ => None,
             })
+            .chain(Self::emoji_refs(p))
             .collect();
         self.resolve_emoji(&emoji_ids);
         let (uh, ul) = uuid_of!(p.user_id).unwrap_or((0, 0));
@@ -1322,7 +1404,7 @@ impl RootBackend {
         for r in &p.reactions {
             let Some(u) = r.user_id.as_ref() else { continue };
             let uid = self.ids.local(u.high64, u.low64);
-            let emoji = Self::reaction_emoji(&r.shortcode);
+            let emoji = self.reaction_emoji(&r.shortcode);
             match out.iter_mut().find(|x| x.emoji == emoji) {
                 Some(x) => if !x.user_ids.contains(&uid) { x.user_ids.push(uid) },
                 None => out.push(Reaction { emoji, user_ids: vec![uid] }),
@@ -1332,11 +1414,15 @@ impl RootBackend {
     }
 
     /// Root reaction shortcode (":fire:", "1f525", or a custom emoji id) → what the UI shows.
-    fn reaction_emoji(code: &str) -> String {
-        // custom emoji reactions: ":name:ID:" → the id (the UI shows its image)
-        let parts: Vec<&str> = code.trim_matches(':').split(':').collect();
-        if parts.len() == 2 && parts[1].len() >= 20 {
-            return parts[1].to_string();
+    fn reaction_emoji(&mut self, code: &str) -> String {
+        // custom emoji reactions → "custom:ID:name:URL" so the UI can draw the picture
+        if let Some(id) = Self::custom_reaction_id(code) {
+            if !self.emoji_cache.contains_key(&id) { self.resolve_emoji(&[id.clone()]) }
+            let name = code.trim_matches(':').split(':').next().unwrap_or("").to_string();
+            return match self.emoji_cache.get(&id) {
+                Some((url, code_name)) => format!("custom:{id}:{}:{url}", if name.is_empty() || name == id { code_name.clone() } else { name }),
+                None => id,
+            };
         }
         let colon = if code.starts_with(':') { code.to_string() } else { format!(":{code}:") };
         messages::unicode_emoji(code).or_else(|| messages::unicode_emoji(&colon)).unwrap_or_else(|| code.to_string())
@@ -1514,7 +1600,12 @@ impl Backend for RootBackend {
         let mine = self.message_mut(id).is_some_and(|m| m.reactions.iter().any(|r| r.emoji == emoji && r.user_ids.contains(&me)));
         // Root identifies unicode emoji by code points ("1f525"), custom ones by their id
         // Root reaction codes: ":heart:" for standard emoji (verified on real messages), the id for custom ones
-        let code = if emoji.is_ascii() && emoji.len() >= 20 && !emoji.contains(':') {
+        let code = if let Some(rest) = emoji.strip_prefix("custom:") {
+            let mut it = rest.splitn(3, ':');
+            let id = it.next().unwrap_or("");
+            let name = it.next().unwrap_or("");
+            format!(":{name}:{id}:")
+        } else if emoji.is_ascii() && emoji.len() >= 20 && !emoji.contains(':') {
             // custom emoji: Root's code is ":name:ID:" (seen on real reactions)
             let name = self.my_emoji.iter().chain(std::iter::empty()).find(|e| e.0 == emoji).map(|e| e.1.clone())
                 .or_else(|| self.emoji_cache.get(emoji).map(|e| e.1.clone()));
@@ -2183,6 +2274,29 @@ pub fn parse_guid(s: &str) -> Option<(u64, u64)> {
     Some((u64::from_be_bytes(b[0..8].try_into().ok()?), u64::from_be_bytes(b[8..16].try_into().ok()?)))
 }
 
+/// `:name:` candidates in text, skipping ⟦…⟧ tokens and URL schemes ("https://").
+fn shortcode_candidates(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut plain = String::new();
+    let mut depth = 0;
+    for ch in text.chars() {
+        match ch { '⟦' => { depth += 1; plain.push(' ') } '⟧' => { depth -= 1; plain.push(' ') } c if depth == 0 => plain.push(c), _ => {} }
+    }
+    let mut rest = plain.as_str();
+    while let Some(a) = rest.find(':') {
+        let after = &rest[a + 1..];
+        match after.find(':') {
+            Some(e) if e > 1 && e <= 48 && after[..e].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') && !after[e + 1..].starts_with("//") => {
+                let c = &after[..e];
+                if !c.eq_ignore_ascii_case("http") && !c.eq_ignore_ascii_case("https") { out.push(c.to_string()) }
+                rest = &after[e + 1..];
+            }
+            _ => rest = after,
+        }
+    }
+    out
+}
+
 /// Root's long id form (users, roles): 8-4-4-4-12 lowercase hex.
 pub fn dashed_guid(hi: u64, lo: u64) -> String {
     let h = format!("{hi:016x}{lo:016x}");
@@ -2501,6 +2615,12 @@ struct RoleInfo {
 
 #[cfg(test)]
 mod mention_tests {
+    #[test]
+    fn candidates_skip_tokens_and_urls() {
+        let t = "hi :LegoCry: ⟦e:https://x.net/a|Wave⟧ see https://y.com :ok_hand: ⟦m:bob⟧";
+        assert_eq!(super::shortcode_candidates(t), vec!["LegoCry".to_string(), "ok_hand".to_string()]);
+    }
+
     #[test]
     fn dashed() {
         assert_eq!(super::dashed_guid(0x00318e1df7f98201, 0x8d29dd78b5f49753), "00318e1d-f7f9-8201-8d29-dd78b5f49753");
