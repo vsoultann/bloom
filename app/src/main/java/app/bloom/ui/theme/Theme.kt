@@ -112,6 +112,8 @@ object Ui {
     var letterSpacing by androidx.compose.runtime.mutableFloatStateOf(0f) // em
     /** loaded font family for [fontId] (null = system) */
     var fontFamily by androidx.compose.runtime.mutableStateOf<androidx.compose.ui.text.font.FontFamily?>(null)
+    /** status bubble on profiles: "colour" (their accent) · "glass" · "solid" */
+    var statusBubble by androidx.compose.runtime.mutableStateOf("colour")
     /** Android battery saver is on: effects step down, refresh rate isn't forced */
     var powerSave by androidx.compose.runtime.mutableStateOf(false)
     /** what effects actually run (power saver wins) */

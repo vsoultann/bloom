@@ -432,7 +432,11 @@ impl RootBackend {
 
     /// Cached messages for a channel (instant), if any.
     pub fn cached_messages(&self, channel: Id) -> Vec<Message> {
-        self.msgs.get(&channel).cloned().unwrap_or_default()
+        // saved snapshots from older versions may be out of order; always hand back time order
+        let mut v = self.msgs.get(&channel).cloned().unwrap_or_default();
+        v.sort_by_key(|m| m.ts);
+        v.dedup_by_key(|m| m.id);
+        v
     }
 
     pub fn connect(session: &Session, dump_dir: Option<PathBuf>) -> Result<Self, String> {
@@ -1545,7 +1549,11 @@ impl Backend for RootBackend {
 
     fn insert(&mut self, m: Message) {
         self.bump_dm(&m);
-        self.msgs.entry(m.channel_id).or_default().push(m);
+        // keep each channel in time order (live system events can carry older timestamps)
+        let list = self.msgs.entry(m.channel_id).or_default();
+        if list.iter().any(|x| x.id == m.id) { return }
+        let at = list.partition_point(|x| x.ts <= m.ts);
+        list.insert(at, m);
     }
     fn dms(&self) -> Vec<DirectMessage> {
         self.dms.clone()

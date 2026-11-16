@@ -150,6 +150,11 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
     var composerHeight by remember { mutableStateOf(80.dp) }
     val msgs = vm.messages
 
+    // after the whole list is swapped (cached → fresh), items jump into place instead of
+    // gliding from their old spots — gliding everything at once made messages overlap
+    var settled by remember { mutableStateOf(true) }
+    LaunchedEffect(vm.listEpoch) { settled = false; kotlinx.coroutines.delay(700); settled = true }
+
     // opening a chat always starts at the newest message
     LaunchedEffect(vm.selectedChannelId) { listState.scrollToItem(0) }
     val firstLoad = vm.messages.isNotEmpty()
@@ -220,12 +225,13 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
                     Box(Modifier.animateItem(fadeInSpec = Motion.smooth(), placementSpec = Motion.smooth(), fadeOutSpec = Motion.smooth())) { OutgoingMediaRow(vm, o) }
                 }
                 items(reversed.size, key = { reversed[it].id }) { i ->
+                    val glide = if (settled) Motion.smooth<androidx.compose.ui.unit.IntOffset>() else null
                     val m = reversed[i]
                     val prev = reversed.getOrNull(i + 1)
                     // a new day starts here (or this is the very first message)
                     val newDay = if (prev == null) vm.noMoreHistory else !sameDay(prev.ts, m.ts)
                     val grouped = !newDay && prev != null && prev.authorId == m.authorId && m.ts - prev.ts < 300 && m.replyTo == null
-                    if (newDay) Column(Modifier.animateItem(fadeInSpec = null, placementSpec = Motion.smooth(), fadeOutSpec = Motion.effects())) {
+                    if (newDay) Column(Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = Motion.effects())) {
                         DateDivider(m.ts)
                         MessageRow(
                             vm, m, grouped, reversed, Modifier,
@@ -238,7 +244,7 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
                     } else MessageRow(
                         vm, m, grouped, reversed,
                         // existing messages glide (no bounce) as new ones arrive; the entrance itself is in MessageBody
-                        Modifier.animateItem(fadeInSpec = null, placementSpec = Motion.smooth(), fadeOutSpec = Motion.effects()),
+                        Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = Motion.effects()),
                         onJump = { rid ->
                             val idx = reversed.indexOfFirst { it.id == rid }
                             if (idx >= 0) jumpScope.launch { listState.animateScrollToItem(idx, -200); vm.flash(rid) }
@@ -294,24 +300,40 @@ private fun TopBar(vm: AppViewModel, haze: HazeState, onMenu: () -> Unit, modifi
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onMenu) { Icon(Icons.Rounded.Menu, "Channels") }
-        Icon(
-            when {
-                vm.selectedServerId == null && c != null -> Icons.Rounded.AlternateEmail
-                else -> when (c?.kind) {
-                ChannelKind.ANNOUNCEMENT -> Icons.Rounded.Campaign
-                ChannelKind.VOICE -> Icons.Rounded.GraphicEq
-                ChannelKind.APP -> Icons.Rounded.Apps
-                else -> Icons.Rounded.Tag
-                }
-            },
-            null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp),
-        )
-        Spacer(Modifier.width(6.dp))
+        val dm = if (vm.selectedServerId == null && c != null) vm.dms.firstOrNull { it.id == c.id } else null
+        val dmPeople = dm?.userIds?.mapNotNull { vm.users[it] }.orEmpty()
+        when {
+            // DMs: their picture with a status ring/dot; groups: stacked pictures
+            dmPeople.size == 1 -> Box(Modifier.clip(CircleShape).clickable { vm.openProfile(dmPeople[0].id) }) {
+                Avatar(dmPeople[0].displayName, dmPeople[0].hue, 36.dp, userId = dmPeople[0].id, status = dmPeople[0].status)
+            }
+            dmPeople.size > 1 -> Row(horizontalArrangement = Arrangement.spacedBy((-14).dp)) {
+                dmPeople.take(3).forEach { u -> Avatar(u.displayName, u.hue, 30.dp, userId = u.id) }
+            }
+            c?.iconUrl != null && vm.channelIcons -> coil3.compose.AsyncImage(
+                c.iconUrl, null, Modifier.size(32.dp).clip(RoundedCornerShape(9.dp)), contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            )
+            else -> Icon(
+                when (c?.kind) {
+                    ChannelKind.ANNOUNCEMENT -> Icons.Rounded.Campaign
+                    ChannelKind.VOICE -> Icons.Rounded.GraphicEq
+                    ChannelKind.APP -> Icons.Rounded.Apps
+                    else -> Icons.Rounded.Tag
+                },
+                null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp),
+            )
+        }
+        Spacer(Modifier.width(10.dp))
         Column(Modifier.weight(1f)) {
-            Text(c?.name ?: "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            // an empty topic line used to push the title above the icons' centre line
-            if (!c?.topic.isNullOrBlank()) Text(
-                plainText(c!!.topic), style = MaterialTheme.typography.bodySmall,
+            Text(dm?.let { vm.dmName(it) } ?: c?.name ?: "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // DMs: what they're up to; channels: the topic (no empty line under the title)
+            val sub = if (dmPeople.size == 1) dmPeople[0].let { u ->
+                u.nowPlaying?.let { "♪ ${it.title}" + (if (it.artist.isNotBlank()) " — ${it.artist}" else "") }
+                    ?: u.statusText.takeIf { it.isNotBlank() }
+                    ?: when (u.status) { app.bloom.core.Status.ONLINE -> "Online"; app.bloom.core.Status.IDLE -> "Idle"; app.bloom.core.Status.DND -> "Do not disturb"; else -> "Offline" }
+            } else if (dmPeople.size > 1) "${dmPeople.size + 1} members" else c?.topic?.takeIf { it.isNotBlank() }?.let { plainText(it) }
+            if (sub != null) Text(
+                sub, style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
@@ -518,10 +540,14 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
                     val rendered = remember(m.content, revealed, scheme.primary) {
                         renderContent(m.content, scheme.primary, scheme.surfaceContainerHighest, revealed, { revealed = revealed + it }, { vm.openMention(it) }, scheme.onSurfaceVariant)
                     }
+                    // a message that's only emoji shows them big (Discord-style "jumbo")
+                    val jumbo = remember(m.content) { emojiOnlyCount(m.content) in 1..27 }
                     RichText(
                         rendered,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             textDecoration = if (m.deleted) TextDecoration.LineThrough else null,
+                            fontSize = if (jumbo) 44.sp else MaterialTheme.typography.bodyLarge.fontSize,
+                            lineHeight = if (jumbo) 54.sp else MaterialTheme.typography.bodyLarge.lineHeight,
                         ),
                         color = if (m.deleted) scheme.error else scheme.onSurface,
                     )
@@ -958,8 +984,16 @@ fun renderContent(
                 at("http://") || at("https://") -> {
                     var end = i
                     while (end < text.length && !text[end].isWhitespace()) end++
-                    val url = text.substring(i, end)
-                    withLink(LinkAnnotation.Url(url, TextLinkStyles(SpanStyle(color = accent, textDecoration = TextDecoration.Underline)))) { append(url) }
+                    val url = text.substring(i, end).trimEnd('.', ',', ')', '!', '?')
+                    end = i + url.length
+                    // tidy: accent colour, no hard underline; long links show domain + a short path
+                    val shown = url.removePrefix("https://").removePrefix("http://").removePrefix("www.").let { u ->
+                        if (u.length <= 42) u else u.take(38).trimEnd('/') + "…"
+                    }
+                    withLink(LinkAnnotation.Url(url, TextLinkStyles(
+                        style = SpanStyle(color = accent, fontWeight = FontWeight.Medium),
+                        pressedStyle = SpanStyle(color = accent, background = accent.copy(alpha = 0.18f), textDecoration = TextDecoration.Underline),
+                    ))) { append(shown) }
                     i = end
                 }
                 // emoji pack: draw unicode emoji as the chosen pack's artwork
@@ -1119,6 +1153,22 @@ fun ChatIntro(vm: AppViewModel) {
             }
         }
     }
+}
+
+/** How many emoji a message is made of, or 0 if it has anything else in it. */
+fun emojiOnlyCount(src: String): Int {
+    var n = 0
+    var i = 0
+    val s = src.trim()
+    if (s.isEmpty()) return 0
+    while (i < s.length) {
+        when {
+            s[i].isWhitespace() -> i++
+            s.startsWith("⟦e:", i) -> { val e = s.indexOf('⟧', i); if (e < 0) return 0; n++; i = e + 1 }
+            else -> { val k = app.bloom.ui.custom.EmojiPacks.emojiAt(s, i); if (k == 0) return 0; n++; i += k }
+        }
+    }
+    return n
 }
 
 /** Material's "emphasized decelerate": starts quick, settles gently. */

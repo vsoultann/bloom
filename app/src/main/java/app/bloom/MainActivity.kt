@@ -3,6 +3,7 @@ package app.bloom
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
@@ -137,7 +138,13 @@ class MainActivity : ComponentActivity() {
                 if (hideBars) c.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars()) else c.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
             }
             BloomTheme(vm.look, vm.amoled, vm.currentOverrides, vm.bgShapes) {
-                CompositionLocalProvider(LocalAvatars provides avatars, LocalAvatarUrls provides avatarUrls) { MainScreen(vm) }
+                CompositionLocalProvider(LocalAvatars provides avatars, LocalAvatarUrls provides avatarUrls) {
+                    androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
+                        MainScreen(vm)
+                        // shared-element flights for profile pictures draw above everything
+                        app.bloom.ui.motion.AvatarFlightOverlay(vm)
+                    }
+                }
             }
         }
     }

@@ -68,6 +68,7 @@ import app.bloom.ui.components.BloomLogo
 import app.bloom.ui.components.rememberFrameTime
 import app.bloom.ui.theme.Motion
 import app.bloom.ui.theme.Ui
+import app.bloom.ui.motion.flightTarget
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -286,7 +287,7 @@ private fun IdCard(vm: AppViewModel, joined: Long?, flip: () -> Float, tilt: () 
                     Text("PROFILE USR#$number", color = muted, fontFamily = FontFamily.Monospace, fontSize = (unit.value * 11f).sp, maxLines = 1)
                     Spacer(Modifier.weight(1f))
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Avatar(me.displayName, me.hue, unit * 96f, userId = me.id, shape = CircleShape)
+                        Avatar(me.displayName, me.hue, unit * 96f, Modifier.flightTarget(me.id), userId = me.id, shape = CircleShape)
                         Spacer(Modifier.width(unit * 18f))
                         Column(Modifier.weight(1f)) {
                             Text("ID CARD OF", color = muted, fontFamily = FontFamily.Monospace, fontSize = (unit.value * 10f).sp)

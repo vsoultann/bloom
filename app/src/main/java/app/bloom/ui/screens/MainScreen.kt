@@ -32,6 +32,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
+import app.bloom.ui.motion.AvatarFlight
+import app.bloom.ui.motion.flightSource
+import app.bloom.ui.motion.flightTarget
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.unit.dp
@@ -117,8 +121,12 @@ internal fun SignedIn(vm: AppViewModel) {
                     AnimatedContent(
                         targetState = vm.selectedServerId,
                         transitionSpec = {
-                            (fadeIn(Motion.effects()) + slideInVertically(Motion.spatial()) { it / 8 })
-                                .togetherWith(fadeOut(Motion.effects()))
+                            // the list slides in from the direction you moved on the rail
+                            val from = vm.servers.indexOfFirst { it.id == initialState }
+                            val to = vm.servers.indexOfFirst { it.id == targetState }
+                            val down = to > from
+                            (fadeIn(Motion.effects()) + slideInVertically(Motion.spatial()) { if (down) it / 8 else -it / 8 })
+                                .togetherWith(fadeOut(Motion.effects()) + slideOutVertically(Motion.spatial()) { if (down) -it / 12 else it / 12 })
                         },
                         label = "side",
                     ) { sid -> if (sid == null) FriendsPane(vm) else ChannelPane(vm) }
@@ -177,11 +185,26 @@ internal fun SignedIn(vm: AppViewModel) {
 @Composable
 internal fun ServerRail(vm: AppViewModel) {
     val scheme = MaterialTheme.colorScheme
+    val bottomInset = WindowInsets.systemBars.asPaddingValues().calculateBottomPadding()
+    Box(Modifier.width(RAIL).fillMaxHeight().background(panel(scheme.surfaceContainerLowest))) {
     LazyColumn(
-        Modifier.width(RAIL).fillMaxHeight().background(panel(scheme.surfaceContainerLowest)),
+        Modifier.fillMaxSize()
+            // feather: everything fades out as it slides under the pinned avatar
+            .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+            .drawWithContent {
+                drawContent()
+                val fade = 150.dp.toPx() + bottomInset.toPx()
+                drawRect(
+                    Brush.verticalGradient(
+                        0f to Color.Black, ((size.height - fade) / size.height).coerceIn(0f, 1f) to Color.Black,
+                        ((size.height - fade * 0.45f) / size.height).coerceIn(0f, 1f) to Color.Transparent, 1f to Color.Transparent,
+                    ),
+                    blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                )
+            },
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = WindowInsets.systemBars.asPaddingValues().let { PaddingValues(top = it.calculateTopPadding() + 12.dp, bottom = it.calculateBottomPadding() + 12.dp) },
+        contentPadding = WindowInsets.systemBars.asPaddingValues().let { PaddingValues(top = it.calculateTopPadding() + 12.dp, bottom = it.calculateBottomPadding() + 96.dp) },
     ) {
         item {
             val sel = vm.selectedServerId == null
@@ -217,15 +240,20 @@ internal fun ServerRail(vm: AppViewModel) {
             val src = remember { MutableInteractionSource() }
             FilledTonalIconButton(onClick = { vm.screen = Screen.Settings }, modifier = Modifier.pressScale(src), interactionSource = src) { Icon(Icons.Rounded.Settings, "Settings") }
         }
-        // you: opens the You page (ID card, stats, customize)
-        vm.me?.let { me ->
-            item {
-                val src = remember { MutableInteractionSource() }
-                Box(Modifier.padding(top = 4.dp).pressScale(src).clip(CircleShape).clickable(src, null) { vm.screen = Screen.You }) {
-                    Avatar(me.displayName, me.hue, 48.dp, userId = me.id, status = me.status)
-                }
-            }
+    }
+    // you: pinned bottom-left; the rail scrolls and fades away behind it.
+    // Tapping flies the picture into the You page's ID card.
+    vm.me?.let { me ->
+        var bounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+        val src = remember { MutableInteractionSource() }
+        Box(
+            Modifier.align(Alignment.BottomCenter).padding(bottom = bottomInset + 14.dp).pressScale(src)
+                .flightSource { bounds = it }
+                .clip(CircleShape).clickable(src, null) { AvatarFlight.launch(me.id, bounds); vm.screen = Screen.You },
+        ) {
+            Avatar(me.displayName, me.hue, 52.dp, userId = me.id, status = me.status)
         }
+    }
     }
 }
 

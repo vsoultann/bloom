@@ -88,7 +88,7 @@ private enum class Part(val title: String, val words: String) {
     FONT("Font", "font typeface text import weight bold spacing google inter"),
     EMOJI("Emoji", "emoji apple windows fluent google twitter facebook samsung pack"),
     MUSIC("Now playing", "music now playing spotify youtube soundcloud listening status"),
-    SCREEN("Screen", "status bar full screen hide"),
+    SCREEN("Screen", "status bar full screen hide profile bubble status"),
     PERFORMANCE("Performance", "performance fps 120hz battery saver smooth"),
 }
 
@@ -475,6 +475,13 @@ private fun MusicSection(vm: AppViewModel) {
 
 @Composable
 private fun ScreenSection(vm: AppViewModel) {
+    SectionHeader("Profiles")
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        listOf("colour" to "Status bubble: their colour", "glass" to "Frosted", "solid" to "Solid").forEach { (k, l) ->
+            FilterChip(Ui.statusBubble == k, { vm.setPref("ui_bubble", k) }, { Text(l) })
+        }
+    }
+    Spacer(Modifier.height(10.dp))
     SectionHeader("Screen")
     ToggleCard("Hide status bar", "Full-screen look (swipe down from the top to peek)", Ui.hideStatusBar) { vm.setPref("ui_hide_status", it) }
 }
