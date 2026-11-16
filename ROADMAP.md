@@ -210,6 +210,15 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [~] Settings button on the rail has press feedback like the others; DM tab pill moves without recomposing
 - [~] Settings → Colors: warns when a custom text colour is hard to read (< 4.5:1) with a one-tap Fix. Current Material overrides: On primary #787877 on Primary #BABABA = ~2:1 (selected tab / Home icon text barely visible)
 
+## 19. Round 10 (2026-11-16)
+- [x] Overlapping messages: cached list could be out of order (live system events appended at the end) and the cached→fresh swap glided every item at once; now time-ordered everywhere and no glide on bulk swaps
+- [~] DM top bar: their picture with status dot, live subtitle (now playing / status / presence); groups stacked; channels show their picture
+- [~] Profile: status as an animated bubble floating out of the avatar (never over the banner; colour/frosted/solid in Customize); bold now-playing card with live equaliser
+- [~] Links: accent colour, no hard underline, shortened; underline + highlight while pressed
+- [~] Rail: your avatar pinned bottom-left, rail feathers out behind it; tapping flies the picture into the You card (shared-element style)
+- [~] Jumbo emoji for emoji-only messages; direction-aware server switch
+- [x] Released v0.3.0
+
 ## Known bugs to check
 - [ ] Password field possibly cleared after tapping the eye (seen twice while the user was also using the phone)
 - [ ] Tapping a channel once opened a message author's profile instead

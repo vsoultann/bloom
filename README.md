@@ -36,10 +36,13 @@ Bloom talks to Root's own servers, so you use your normal Root account, servers,
 - `@mentions` with a picker for people, `@everyone` / `@here` and server roles
 - Markdown: **bold**, *italic*, __underline__, ~~strike~~, `||spoilers||`, headings, quotes, code
 - Photos, videos (HLS), voice messages, GIFs, files — media keeps its real shape, uploads show progress
-- Start-of-chat intros, date dividers, mention highlighting, jump-to-reply
+- Start-of-chat intros, date dividers, mention highlighting, jump-to-reply, jumbo emoji
+- Voice messages in Root's own format (with waveform), DM and group calls
 
 **People**
-- Profiles with bios rendered like messages, banners, mutual servers & friends
+- Profiles with bios rendered like messages, banners, mutual servers & friends, an animated status bubble and a now-playing card
+- A **You** page (ID card you can pull to flip, stats, version & updates) — design adapted from Mochy Music
+- Server **roles**: see every role, manage roles (create, edit, delete), give or take a member's roles
 - Add / accept / decline / remove friends, message and call from a profile
 - Long-press anyone for a local **nickname**, per-person **notifications** and **mute** (15 m – forever)
 - **Now playing**: share what you're listening to (Spotify, YouTube Music, SoundCloud, …) — only other Bloom users can see it

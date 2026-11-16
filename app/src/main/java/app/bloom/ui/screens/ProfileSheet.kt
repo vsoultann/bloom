@@ -15,6 +15,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
+import androidx.compose.animation.animateContentSize
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.foundation.border
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.animation.core.*
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material.icons.rounded.Cake
 import androidx.compose.material.icons.rounded.Link
@@ -154,7 +162,11 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
                 Avatar(u.displayName, u.hue, 92.dp, Modifier.align(Alignment.Center), userId = u.id, status = u.status, shape = avatarShape)
             }
         }
-        Spacer(Modifier.height(56.dp))
+        // the strip under the banner: the avatar's lower half on the left, the status
+        // bubble floating out of it on the right (never over the banner)
+        Box(Modifier.fillMaxWidth().height(60.dp)) {
+            if (u.statusText.isNotBlank()) StatusBubble(u.statusText, accent, Modifier.align(Alignment.CenterStart).padding(start = 128.dp, end = 16.dp))
+        }
         Column(Modifier.padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(u.displayName, style = MaterialTheme.typography.headlineSmall)
@@ -169,29 +181,8 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
             // roles in the server you're looking at
             vm.selectedServerId?.let { sid -> if (vm.authMode == app.bloom.core.AuthMode.ROOT) MemberRolesRow(vm, sid, u.id) }
             u.nowPlaying?.let { np ->
-                Spacer(Modifier.height(10.dp))
-                Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(LocalLookRadius())).background(scheme.tertiaryContainer).padding(12.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(scheme.tertiary), contentAlignment = Alignment.Center) {
-                        Icon(Icons.Rounded.MusicNote, null, tint = scheme.onTertiary)
-                    }
-                    Spacer(Modifier.width(12.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text("Listening on ${np.app}", style = MaterialTheme.typography.labelMedium, color = scheme.onTertiaryContainer.copy(alpha = 0.8f))
-                        Text(np.title, style = MaterialTheme.typography.titleSmall, color = scheme.onTertiaryContainer, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                        if (np.artist.isNotBlank()) Text(np.artist, style = MaterialTheme.typography.bodySmall, color = scheme.onTertiaryContainer.copy(alpha = 0.8f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    }
-                }
-            }
-            if (u.statusText.isNotBlank()) {
-                Spacer(Modifier.height(8.dp))
-                // full status, wrapping onto as many lines as it needs
-                Text(
-                    u.statusText, style = MaterialTheme.typography.bodyLarge, color = scheme.onSurface,
-                    modifier = Modifier.clip(app.bloom.ui.theme.Radii.card).background(scheme.surfaceContainerHigh).padding(horizontal = 12.dp, vertical = 8.dp),
-                )
+                Spacer(Modifier.height(12.dp))
+                NowPlayingCard(np, accent)
             }
             // relationship actions: add · accept/decline · message/call
             if (u.id != vm.me?.id && !u.bot && vm.authMode == app.bloom.core.AuthMode.ROOT) {
@@ -367,4 +358,87 @@ private fun MutualRow(onClick: () -> Unit, content: @Composable RowScope.() -> U
             .background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(src, null, onClick = onClick).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically, content = content,
     )
+}
+
+
+/**
+ * Status as a speech bubble floating out of the avatar: tinted by the person's colour
+ * (or frosted / solid, see Customize), with trailing dots, a pop-in, and a gentle bob.
+ */
+@Composable
+private fun StatusBubble(text: String, accent: Color, modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val style = app.bloom.ui.theme.Ui.statusBubble
+    var expanded by remember(text) { mutableStateOf(false) }
+    var shown by remember(text) { mutableStateOf(false) }
+    LaunchedEffect(text) { delay(180); shown = true }
+    val pop by animateFloatAsState(if (shown) 1f else 0f, spring(0.55f, 380f), label = "bubblePop")
+    val t = if (app.bloom.ui.theme.Ui.effectsOn) rememberInfiniteTransition(label = "bob") else null
+    val bob = t?.animateFloat(-1f, 1f, infiniteRepeatable(tween(2600, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "y")
+    val dots = t?.animateFloat(0.35f, 1f, infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "d")
+    val (bg, fg, border) = when (style) {
+        "glass" -> Triple(scheme.surfaceContainerHighest.copy(alpha = 0.72f), scheme.onSurface, scheme.onSurface.copy(alpha = 0.12f))
+        "solid" -> Triple(scheme.surfaceContainerHighest, scheme.onSurface, Color.Transparent)
+        else -> Triple(lerp(scheme.surfaceContainerHighest, accent, 0.55f), if (lerp(scheme.surfaceContainerHighest, accent, 0.55f).luminance() > 0.5f) Color.Black else Color.White, accent.copy(alpha = 0.6f))
+    }
+    Row(
+        modifier.graphicsLayer {
+            scaleX = pop; scaleY = pop; alpha = pop
+            translationY = (bob?.value ?: 0f) * 2.dp.toPx()
+            transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0.5f)
+        },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        // trailing "thought" dots leading back to the avatar
+        Box(Modifier.size(6.dp).graphicsLayer { alpha = dots?.value ?: 1f }.clip(androidx.compose.foundation.shape.CircleShape).background(bg))
+        Spacer(Modifier.width(3.dp))
+        Box(Modifier.size(10.dp).graphicsLayer { alpha = 0.5f + 0.5f * (dots?.value ?: 1f) }.clip(androidx.compose.foundation.shape.CircleShape).background(bg))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text, color = fg, style = MaterialTheme.typography.bodyMedium,
+            maxLines = if (expanded) 8 else 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier
+                .animateContentSize(app.bloom.ui.theme.Motion.spatial())
+                .clip(RoundedCornerShape(18.dp)).background(bg)
+                .border(1.dp, border, RoundedCornerShape(18.dp))
+                .clickable { expanded = !expanded }
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        )
+    }
+}
+
+/** "Listening on Spotify": a bold card in the person's colours with live equaliser bars. */
+@Composable
+private fun NowPlayingCard(np: app.bloom.notify.NowPlaying, accent: Color) {
+    val scheme = MaterialTheme.colorScheme
+    val fg = if (accent.luminance() > 0.55f) Color.Black else Color.White
+    Row(
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(22.dp))
+            .background(Brush.linearGradient(listOf(accent, lerp(accent, scheme.tertiary, 0.6f))))
+            .padding(14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(58.dp).clip(RoundedCornerShape(16.dp)).background(fg.copy(alpha = 0.16f)), contentAlignment = Alignment.Center) {
+            Equalizer(fg)
+        }
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text("LISTENING ON ${np.app.uppercase()}", style = MaterialTheme.typography.labelSmall.copy(letterSpacing = 1.2.sp, fontWeight = FontWeight.Bold), color = fg.copy(alpha = 0.8f))
+            Text(np.title, style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = fg, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.basicMarquee())
+            if (np.artist.isNotBlank()) Text(np.artist, style = MaterialTheme.typography.bodyMedium, color = fg.copy(alpha = 0.85f), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+        }
+        Icon(Icons.Rounded.GraphicEq, null, tint = fg.copy(alpha = 0.7f))
+    }
+}
+
+/** Four bars bouncing out of step, like a playing track. */
+@Composable
+private fun Equalizer(color: Color) {
+    val t = if (app.bloom.ui.theme.Ui.effectsOn) rememberInfiniteTransition(label = "eq") else null
+    Row(Modifier.height(26.dp), horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.Bottom) {
+        listOf(520, 700, 430, 610).forEachIndexed { i, ms ->
+            val h = t?.animateFloat(0.25f, 1f, infiniteRepeatable(tween(ms, easing = FastOutSlowInEasing), RepeatMode.Reverse, initialStartOffset = androidx.compose.animation.core.StartOffset(i * 120)), label = "b$i")
+            Box(Modifier.width(5.dp).fillMaxHeight(h?.value ?: (0.4f + i * 0.15f)).clip(RoundedCornerShape(3.dp)).background(color))
+        }
+    }
 }

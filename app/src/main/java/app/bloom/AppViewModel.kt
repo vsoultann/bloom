@@ -520,6 +520,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             settings.optJSONArray("np_apps")?.let { a -> for (i in 0 until a.length()) npApps.add(a.getString(i)) }
             Ui.let { u ->
                 u.livingIcons = settings.optString("ui_living", "always")
+                u.statusBubble = settings.optString("ui_bubble", "colour")
                 u.emojiPack = settings.optString("ui_emoji", "system")
                 u.fontId = settings.optString("ui_font", "system")
                 u.fontScope = settings.optString("ui_font_scope", "all")
@@ -732,7 +733,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     clearTyping(ev.message.channelId, ev.message.authorId)
                     // keep DM previews/order current
                     if (dms.any { it.id == ev.message.channelId }) runCatching { dms = Core.dms() }
-                    if (ev.message.channelId == selectedChannelId) messages.add(ev.message)
+                    // keep time order and never add a message twice
+                    if (ev.message.channelId == selectedChannelId && messages.none { it.id == ev.message.id }) {
+                        val at = messages.indexOfFirst { it.ts > ev.message.ts }.let { if (it < 0) messages.size else it }
+                        messages.add(at, ev.message)
+                    }
                     maybeNotify(ev.message, replyToMe)
                 }
                 is Event.Update -> { applySentShapes(ev.message); replace(ev.message) }
@@ -782,6 +787,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var channelOpens by mutableStateOf(0); private set
 
     var noMoreHistory by mutableStateOf(false); private set
+    /** bumped when the whole message list is replaced (no move animations for that swap) */
+    var listEpoch by mutableIntStateOf(0); private set
     var loadingOlder by mutableStateOf(false); private set
 
     /** Loads older history when you scroll to the top. */
@@ -827,13 +834,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch {
             // instant: whatever we have cached
             runCatching { Core.cachedMessages(id) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { cached ->
-                if (selectedChannelId == id) { messages.clear(); messages.addAll(cached) }
+                if (selectedChannelId == id) { listEpoch++; messages.clear(); messages.addAll(cached) }
             }
             val list = runCatching { Core.messages(id) }.getOrElse { error = it.message; emptyList() }
             launch { runCatching { Core.markViewed(id) } }
             // Real backends fetch author profiles alongside messages.
             runCatching { Core.users() }.getOrNull()?.let { putUsers(it) }
             if (selectedChannelId == id && (list.isNotEmpty() || messages.isEmpty())) {
+                listEpoch++
                 messages.clear()
                 messages.addAll(list)
             }
@@ -1226,6 +1234,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "ui_msg_enter" -> Ui.messageEnter = value as String
             "ui_hide_status" -> Ui.hideStatusBar = value as Boolean
             "ui_living" -> Ui.livingIcons = value as String
+            "ui_bubble" -> Ui.statusBubble = value as String
             "ui_emoji" -> Ui.emojiPack = value as String
             "ui_font_scope" -> Ui.fontScope = value as String
             "ui_font_bold" -> { Ui.fontBold = (value as Number).toInt(); Ui.fontFamily = Fonts.family(getApplication(), Ui.fontId, Ui.fontBold) }
