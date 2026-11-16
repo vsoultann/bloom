@@ -212,7 +212,7 @@ fun GifPanel(vm: AppViewModel, onSent: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     var query by remember { mutableStateOf("") }
     LaunchedEffect(query) { delay(350); vm.loadGifs(query) }
-    Column(Modifier.fillMaxWidth().height(380.dp).padding(horizontal = 10.dp)) {
+    Column(Modifier.fillMaxWidth().heightIn(max = 380.dp).fillMaxHeight().padding(horizontal = 10.dp)) {
         OutlinedTextField(
             query, { query = it }, placeholder = { Text("Search GIFs") }, singleLine = true,
             leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(50),
@@ -255,7 +255,7 @@ fun EmojiPanel(vm: AppViewModel, onPick: (String) -> Unit) {
     var query by remember { mutableStateOf("") }
     val cats = remember(vm.emojiCatalog) { vm.emojiCatalog.groupBy { it.category } }
     var cat by remember { mutableStateOf("Custom") }
-    Column(Modifier.fillMaxWidth().height(360.dp).padding(horizontal = 10.dp)) {
+    Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).fillMaxHeight().padding(horizontal = 10.dp)) {
         OutlinedTextField(
             query, { query = it }, placeholder = { Text("Search emoji") }, singleLine = true,
             leadingIcon = { Icon(Icons.Rounded.Search, null) }, shape = RoundedCornerShape(50),

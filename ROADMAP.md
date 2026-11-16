@@ -228,6 +228,12 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [~] Avatar flight: drawn from the first frame, curved path, critically damped spring, then a 220 ms cross-fade into the real picture (no clip at the end)
 - [x] Released v0.3.1
 
+## 21. Round 12 (2026-11-16)
+- [~] Keyboard ⇄ emoji/attach/GIF panels: panels take the keyboard's exact (learned) height; the space under the input is max(keyboard, panel), so swapping never moves the composer; panel waits for the keyboard to fully rise before leaving; inset reads moved to layout/flows (no per-frame recomposition)
+- [x] Ghost/overlap after a refresh: leaving items faded out over the new list (and the "settled" flag was a frame late); refresh now merges with kept history, no fade-outs or glides during a swap
+- [x] List yanked back down while dragging up: stick-to-bottom keyed on the message count (older history changes it); now keyed on the newest message and never during a drag
+- [x] Released v0.3.2
+
 ## Known bugs to check
 - [ ] Password field possibly cleared after tapping the eye (seen twice while the user was also using the phone)
 - [ ] Tapping a channel once opened a message author's profile instead
