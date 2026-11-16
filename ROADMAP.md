@@ -234,6 +234,11 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [x] List yanked back down while dragging up: stick-to-bottom keyed on the message count (older history changes it); now keyed on the newest message and never during a drag
 - [x] Released v0.3.2
 
+## 22. Round 13 (2026-11-16)
+- [~] Keyboard goes down as soon as you swipe out of a chat (drag start) and when the side panel opens
+- [~] Panel ⇄ keyboard handoff is continuous: panel grows from the keyboard's actual edge, waits until the keyboard has stopped moving, then shrinks into it (space = max(keyboard, panel)); keyboard height learned from where it settles, not the tallest seen
+- [x] Released v0.3.3
+
 ## Known bugs to check
 - [ ] Password field possibly cleared after tapping the eye (seen twice while the user was also using the phone)
 - [ ] Tapping a channel once opened a message author's profile instead

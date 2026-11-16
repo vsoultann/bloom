@@ -43,6 +43,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.layout
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.unit.em
 import androidx.compose.foundation.border
 import androidx.compose.animation.shrinkHorizontally
@@ -689,26 +690,43 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
     val imeInsets = WindowInsets.ime
     val navInsets = WindowInsets.navigationBars
     fun kbOverNav() = (imeInsets.getBottom(density) - navInsets.getBottom(density)).coerceAtLeast(0)
+    // learn the keyboard's height from where it SETTLES (latest, not tallest ever seen)
     LaunchedEffect(Unit) {
-        snapshotFlow { kbOverNav() }.collect { k -> if (k > with(density) { 160.dp.toPx() } && k > vm.keyboardHeightPx) vm.keyboardHeightPx = k }
+        snapshotFlow { kbOverNav() }.collectLatest { k ->
+            if (k > with(density) { 160.dp.toPx() }) { delay(120); vm.keyboardHeightPx = k }
+        }
     }
     val kbHeightPx = if (vm.keyboardHeightPx > 0) vm.keyboardHeightPx else with(density) { 300.dp.roundToPx() }
     val panelArea = remember { androidx.compose.animation.core.Animatable(0f) }
     var awaitingKeyboard by remember { mutableStateOf(false) }
+    val glide = androidx.compose.animation.core.spring<Float>(dampingRatio = 1f, stiffness = 420f)
+    // The space under the input row is always max(keyboard, panel), so any change here is
+    // continuous: the panel grows from / shrinks into wherever the keyboard actually is.
     LaunchedEffect(panel) {
-        val target = if (panel != ComposerPanel.NONE) kbHeightPx.toFloat() else 0f
-        val k = kbOverNav()
-        // if the keyboard is (still) covering that space, swap instantly: nothing visibly moves
-        if (target > 0f && k > target * 0.5f || target == 0f && k > panelArea.value * 0.9f) panelArea.snapTo(target)
-        else panelArea.animateTo(target, androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 520f))
+        if (panel != ComposerPanel.NONE) {
+            val k = kbOverNav().toFloat()
+            if (panelArea.value < k) panelArea.snapTo(k)   // start exactly at the keyboard's edge
+            panelArea.animateTo(kbHeightPx.toFloat(), glide)
+        } else {
+            panelArea.animateTo(0f, glide)                   // shrink into the keyboard (or away)
+        }
     }
-    // panel → keyboard: keep the panel until the keyboard has fully risen, then let it go
+    // panel → keyboard: hand over only once the keyboard has stopped moving
     LaunchedEffect(awaitingKeyboard) {
         if (!awaitingKeyboard) return@LaunchedEffect
-        snapshotFlow { kbOverNav() }.first { it >= kbHeightPx * 0.92f }
+        var last = -1
+        var still = 0
+        while (true) {
+            val k = kbOverNav()
+            if (k > with(density) { 160.dp.toPx() } && k == last) still++ else still = 0
+            last = k
+            if (still >= 3) break
+            delay(16)
+        }
         panel = ComposerPanel.NONE; awaitingKeyboard = false
     }
-    LaunchedEffect(awaitingKeyboard) { if (awaitingKeyboard) { delay(700); if (awaitingKeyboard) { panel = ComposerPanel.NONE; awaitingKeyboard = false } } }
+    // safety: if the keyboard never comes (hardware keyboard, refused focus), let the panel go anyway
+    LaunchedEffect(awaitingKeyboard) { if (awaitingKeyboard) { delay(900); if (awaitingKeyboard) { panel = ComposerPanel.NONE; awaitingKeyboard = false } } }
     val scheme = MaterialTheme.colorScheme
     val editing = vm.editing
     val replying = vm.replyingTo
