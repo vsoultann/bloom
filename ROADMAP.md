@@ -224,6 +224,8 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [x] Flag emoji names (:flagca: → 🇨🇦) in bios and messages
 - [~] Avatar flight: tracks the landing spot live (it moved with the sliding panel before → flew off-screen); panel closes; source hides while flying
 - [~] Status dot no longer cut off (DM top bar, rail avatar weren't supposed to be clipped)
+- [x] Fixed a regression from this round: the emoji name matching also matched `:https:` inside already-rendered emoji tokens and printed raw URLs; now skips tokens/URLs (unit test + live check: 53 emoji, 0 raw URLs, 0 broken tokens); bad cached names/messages are cleaned on start
+- [~] Avatar flight: drawn from the first frame, curved path, critically damped spring, then a 220 ms cross-fade into the real picture (no clip at the end)
 - [x] Released v0.3.1
 
 ## Known bugs to check

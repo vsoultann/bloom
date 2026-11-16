@@ -922,6 +922,15 @@ impl RootBackend {
         self.dms.sort_by_key(|d| std::cmp::Reverse(d.last_activity));
     }
 
+    /// Drops emoji names that a broken build learned from URLs ("https" etc.).
+    pub fn clean_emoji_names(&mut self) {
+        for (_, e) in self.emoji_cache.iter_mut() {
+            if e.1.len() < 2 || e.1.eq_ignore_ascii_case("http") || e.1.eq_ignore_ascii_case("https") { e.1.clear() }
+        }
+        // cached messages rendered by that build carry broken tokens: drop them, they refetch
+        for (_, list) in self.msgs.iter_mut() { list.retain(|m| !m.content.contains("⟦e⟦") && !m.content.contains("⟦e:https|") && !m.content.contains(":https:")) }
+    }
+
     /// Bots are GUID type 9 (Root "App" ids); applies to users from any source, incl. the snapshot.
     pub fn mark_bots(&mut self) {
         let ids: Vec<Id> = self.users.keys().copied().collect();
@@ -1081,19 +1090,8 @@ impl RootBackend {
         }
         // the rest: unknown :codes: in the text, matched to the remaining ids in order
         let mut unknown_codes: Vec<String> = Vec::new();
-        {
-            let mut rest = text.as_str();
-            while let Some(a) = rest.find(':') {
-                let after = &rest[a + 1..];
-                match after.find(':') {
-                    Some(e) if e > 0 && e <= 48 && after[..e].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') => {
-                        let c = after[..e].to_string();
-                        if !local.contains_key(&c) && !self.emoji_by_code.contains_key(&c) && crate::emoji::lookup(&c).is_none() && !unknown_codes.contains(&c) { unknown_codes.push(c) }
-                        rest = &after[e + 1..];
-                    }
-                    _ => rest = after,
-                }
-            }
+        for c in shortcode_candidates(&text) {
+            if !local.contains_key(&c) && !self.emoji_by_code.contains_key(&c) && crate::emoji::lookup(&c).is_none() && !unknown_codes.contains(&c) { unknown_codes.push(c) }
         }
         let unnamed: Vec<&str> = ref_ids.iter().copied().filter(|id| self.emoji_cache.get(*id).is_some_and(|e| e.1.is_empty())).collect();
         for (code, id) in unknown_codes.iter().zip(unnamed.iter()) {
@@ -1110,13 +1108,27 @@ impl RootBackend {
 
     /// `:name:` → inline custom emoji when one of your servers has that emoji.
     fn replace_custom_shortcodes(&self, s: &str, local: &HashMap<String, String>) -> String {
+        // leave Bloom's own ⟦…⟧ tokens (emoji, mentions) untouched
+        if s.contains('⟦') {
+            let mut out = String::with_capacity(s.len());
+            let mut rest = s;
+            while let Some(a) = rest.find('⟦') {
+                out.push_str(&self.replace_custom_shortcodes(&rest[..a], local));
+                match rest[a..].find('⟧') {
+                    Some(b) => { out.push_str(&rest[a..a + b + '⟧'.len_utf8()]); rest = &rest[a + b + '⟧'.len_utf8()..]; }
+                    None => { out.push_str(&rest[a..]); rest = ""; }
+                }
+            }
+            out.push_str(&self.replace_custom_shortcodes(rest, local));
+            return out;
+        }
         let mut out = String::with_capacity(s.len());
         let mut rest = s;
         while let Some(start) = rest.find(':') {
             out.push_str(&rest[..start]);
             let after = &rest[start + 1..];
             match after.find(':') {
-                Some(end) if end > 0 && end <= 48 && after[..end].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') => {
+                Some(end) if end > 1 && end <= 48 && after[..end].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') && !after[end + 1..].starts_with("//") => {
                     match local.get(&after[..end]).or_else(|| self.emoji_by_code.get(&after[..end])) {
                         Some(url) => {
                             out.push_str(&messages::emoji(url, &after[..end]));
@@ -2262,6 +2274,29 @@ pub fn parse_guid(s: &str) -> Option<(u64, u64)> {
     Some((u64::from_be_bytes(b[0..8].try_into().ok()?), u64::from_be_bytes(b[8..16].try_into().ok()?)))
 }
 
+/// `:name:` candidates in text, skipping ⟦…⟧ tokens and URL schemes ("https://").
+fn shortcode_candidates(text: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut plain = String::new();
+    let mut depth = 0;
+    for ch in text.chars() {
+        match ch { '⟦' => { depth += 1; plain.push(' ') } '⟧' => { depth -= 1; plain.push(' ') } c if depth == 0 => plain.push(c), _ => {} }
+    }
+    let mut rest = plain.as_str();
+    while let Some(a) = rest.find(':') {
+        let after = &rest[a + 1..];
+        match after.find(':') {
+            Some(e) if e > 1 && e <= 48 && after[..e].chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') && !after[e + 1..].starts_with("//") => {
+                let c = &after[..e];
+                if !c.eq_ignore_ascii_case("http") && !c.eq_ignore_ascii_case("https") { out.push(c.to_string()) }
+                rest = &after[e + 1..];
+            }
+            _ => rest = after,
+        }
+    }
+    out
+}
+
 /// Root's long id form (users, roles): 8-4-4-4-12 lowercase hex.
 pub fn dashed_guid(hi: u64, lo: u64) -> String {
     let h = format!("{hi:016x}{lo:016x}");
@@ -2580,6 +2615,12 @@ struct RoleInfo {
 
 #[cfg(test)]
 mod mention_tests {
+    #[test]
+    fn candidates_skip_tokens_and_urls() {
+        let t = "hi :LegoCry: ⟦e:https://x.net/a|Wave⟧ see https://y.com :ok_hand: ⟦m:bob⟧";
+        assert_eq!(super::shortcode_candidates(t), vec!["LegoCry".to_string(), "ok_hand".to_string()]);
+    }
+
     #[test]
     fn dashed() {
         assert_eq!(super::dashed_guid(0x00318e1df7f98201, 0x8d29dd78b5f49753), "00318e1d-f7f9-8201-8d29-dd78b5f49753");
