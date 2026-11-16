@@ -238,6 +238,7 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [~] Keyboard goes down as soon as you swipe out of a chat (drag start) and when the side panel opens
 - [~] Panel ⇄ keyboard handoff is continuous: panel grows from the keyboard's actual edge, waits until the keyboard has stopped moving, then shrinks into it (space = max(keyboard, panel)); keyboard height learned from where it settles, not the tallest seen
 - [x] Released v0.3.3
+- [~] Panels slide down out of frame when closing (and up from below when opening) instead of squashing — v0.3.4
 
 ## Known bugs to check
 - [ ] Password field possibly cleared after tapping the eye (seen twice while the user was also using the phone)

@@ -42,6 +42,7 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.draw.clipToBounds
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.collectLatest
 import androidx.compose.ui.unit.em
@@ -931,9 +932,14 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
         AnimatedContent(
             panel,
             modifier = Modifier.fillMaxWidth()
+                // the panel is always laid out at full keyboard height and only the visible
+                // window changes: closing slides it down out of frame (like the keyboard),
+                // opening slides it up from below — no squashing
+                .clipToBounds()
                 .layout { measurable, constraints ->
                     val h = panelArea.value.toInt()
-                    val p = measurable.measure(constraints.copy(minHeight = h, maxHeight = h))
+                    val full = maxOf(kbHeightPx, h)
+                    val p = measurable.measure(constraints.copy(minHeight = full, maxHeight = full))
                     layout(p.width, h) { p.place(0, 0) }
                 }
                 .drawBehind { if (panelArea.value >= 1f) drawRect(scheme.surfaceContainerHigh) },
