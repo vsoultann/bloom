@@ -158,7 +158,7 @@ fun BloomLogo(size: Dp, modifier: Modifier = Modifier) {
     val time by rememberFrameTime()
     var shown by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) { shown = true }
-    val pop by animateFloatAsState(if (shown) 1f else 0f, spring(0.55f, 260f), label = "logoPop")
+    val pop by animateFloatAsState(if (shown) 1f else 0f, app.bloom.ui.theme.Motion.spring(0.55f, 260f), label = "logoPop")
     val outerMorph = remember { BloomShapes.morph(LogoShapes.bloom8, LogoShapes.bloom12) }
     val core = remember { LogoShapes.clover.toPath().asComposePath() }
     Canvas(modifier.size(size)) {
@@ -210,8 +210,8 @@ private object LogoShapes {
  */
 @Composable
 fun MorphingEye(revealed: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier, tint: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
-    val open by animateFloatAsState(if (revealed) 1f else 0f, spring(0.55f, 380f), label = "eyeOpen")
-    val slash by animateFloatAsState(if (revealed) 0f else 1f, spring(1f, 500f), label = "eyeSlash")
+    val open by animateFloatAsState(if (revealed) 1f else 0f, app.bloom.ui.theme.Motion.spring(0.55f, 380f), label = "eyeOpen")
+    val slash by animateFloatAsState(if (revealed) 0f else 1f, app.bloom.ui.theme.Motion.spring(1f, 500f), label = "eyeSlash")
     val src = remember { MutableInteractionSource() }
     Box(
         modifier.size(48.dp).pressScale(src, 0.8f).clickable(src, null, onClick = onToggle),
@@ -296,7 +296,7 @@ fun ShapePasswordField(
         glyphs.add(g)
         scope.launch {
             if (revealNow) g.reveal.snapTo(1f)
-            g.life.animateTo(1f, spring(0.5f, 520f))
+            g.life.animateTo(1f, app.bloom.ui.theme.Motion.spring(0.5f, 520f))
         }
     }
 
@@ -309,7 +309,7 @@ fun ShapePasswordField(
             value.startsWith(liveText) -> value.substring(liveText.length).forEach(::add)
             liveText.startsWith(value) -> live.drop(value.length).forEach { g ->
                 g.leaving = true
-                scope.launch { g.life.animateTo(0f, spring(1f, 900f)); glyphs.remove(g) }
+                scope.launch { g.life.animateTo(0f, app.bloom.ui.theme.Motion.spring(1f, 900f)); glyphs.remove(g) }
             }
             else -> { glyphs.clear(); value.forEach(::add) }
         }
@@ -317,11 +317,11 @@ fun ShapePasswordField(
     // Reveal ripples along the word.
     LaunchedEffect(revealed) {
         glyphs.toList().forEachIndexed { i, g ->
-            launch { delay(i * 22L); g.reveal.animateTo(if (revealed) 1f else 0f, spring(0.72f, 420f)) }
+            launch { delay(i * 22L); g.reveal.animateTo(if (revealed) 1f else 0f, app.bloom.ui.theme.Motion.spring(0.72f, 420f)) }
         }
     }
 
-    val up by animateFloatAsState(if (focused || value.isNotEmpty()) 1f else 0f, spring(0.85f, 520f), label = "labelUp")
+    val up by animateFloatAsState(if (focused || value.isNotEmpty()) 1f else 0f, app.bloom.ui.theme.Motion.spring(0.85f, 520f), label = "labelUp")
     val borderColor by androidx.compose.animation.animateColorAsState(if (focused) scheme.primary else scheme.outline, Motion.effects(), label = "pwb")
     val labelColor by androidx.compose.animation.animateColorAsState(if (focused) scheme.primary else scheme.onSurfaceVariant, Motion.effects(), label = "pwl")
     val borderW by animateFloatAsState(if (focused) 2f else 1f, Motion.effects(), label = "pww")

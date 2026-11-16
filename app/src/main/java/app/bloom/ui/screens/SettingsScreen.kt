@@ -35,6 +35,7 @@ import app.bloom.core.Plugin
 import app.bloom.ui.components.*
 import app.bloom.ui.theme.LocalLook
 import app.bloom.ui.theme.ColorRole
+import app.bloom.ui.theme.textBackground
 import app.bloom.ui.theme.Look
 import app.bloom.ui.theme.get
 import app.bloom.ui.theme.Motion
@@ -204,7 +205,7 @@ private fun LookCard(l: Look, selected: Boolean, inset: Boolean = true, onClick:
             Text(l.label, style = MaterialTheme.typography.titleMedium, color = if (selected) scheme.onSecondaryContainer else scheme.onSurface)
             Text(l.blurb, style = MaterialTheme.typography.bodySmall, color = if (selected) scheme.onSecondaryContainer.copy(alpha = 0.8f) else scheme.onSurfaceVariant)
         }
-        AnimatedVisibility(selected, enter = scaleIn(Motion.spatialFast()) + fadeIn(), exit = scaleOut() + fadeOut()) {
+        AnimatedVisibility(selected, enter = scaleIn(Motion.spatialFast()) + fadeIn(Motion.effects()), exit = scaleOut(Motion.effects()) + fadeOut(Motion.effects())) {
             Icon(Icons.Rounded.CheckCircle, "Selected", tint = scheme.primary)
         }
     }
@@ -339,6 +340,20 @@ private fun ColorsSection(vm: AppViewModel) {
                     Text(role.label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
                     if (custom) Text("custom", style = MaterialTheme.typography.labelSmall, color = scheme.tertiary)
                 }
+                // Readability check (WCAG): text below 4.5:1 on its background is hard to read.
+                role.textBackground?.let { bgRole ->
+                    val ratio = app.bloom.ui.theme.contrast(c, scheme.get(bgRole))
+                    if (ratio < 4.5) Row(
+                        Modifier.fillMaxWidth().padding(start = 48.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            "Hard to read on ${bgRole.label.lowercase()} (%.1f:1, aim for 4.5:1)".format(ratio),
+                            style = MaterialTheme.typography.bodySmall, color = scheme.error, modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { vm.setColor(role, app.bloom.ui.theme.contentOn(scheme.get(bgRole))) }) { Text("Fix") }
+                    }
+                }
             }
         }
         if (count > 0) OutlinedButton(onClick = { vm.resetColors() }, modifier = Modifier.fillMaxWidth()) { Text("Reset all colours for ${vm.look.label}") }
@@ -394,7 +409,7 @@ private fun DiagnosticsSection(vm: AppViewModel) {
         val fmt = remember { java.text.SimpleDateFormat("MMM d HH:mm:ss", java.util.Locale.getDefault()) }
         val text = entries.orEmpty().joinToString("\n\n") { (ts, msg) -> "[" + fmt.format(java.util.Date(ts * 1000)) + "] " + msg }
         androidx.compose.ui.window.Dialog(onDismissRequest = { open = false }, properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false)) {
-            Surface(Modifier.fillMaxSize().padding(12.dp), shape = RoundedCornerShape(28.dp), color = scheme.surfaceContainerHigh) {
+            Surface(Modifier.fillMaxSize().padding(12.dp), shape = app.bloom.ui.theme.Radii.dialog, color = scheme.surfaceContainerHigh) {
                 Column(Modifier.padding(16.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("Logs", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))

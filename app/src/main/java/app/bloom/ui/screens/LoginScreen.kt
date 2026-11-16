@@ -102,7 +102,7 @@ fun LoginScreen(vm: AppViewModel) {
                 enabled = !vm.signingIn,
             )
 
-            AnimatedVisibility(vm.loginError != null, enter = expandVertically(Motion.spatial()) + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            AnimatedVisibility(vm.loginError != null, enter = expandVertically(Motion.spatial()) + fadeIn(Motion.effects()), exit = shrinkVertically(Motion.spatial()) + fadeOut(Motion.effects())) {
                 Text(
                     vm.loginError ?: "",
                     color = scheme.error, style = MaterialTheme.typography.bodyMedium,
@@ -150,7 +150,7 @@ private fun TurnstileSheet(url: String, onToken: (String) -> Unit, onCancel: (St
     BackHandler { onCancel(null) }
     Box(Modifier.fillMaxSize().background(scheme.scrim.copy(alpha = 0.5f)), contentAlignment = Alignment.BottomCenter) {
         Surface(
-            shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+            shape = app.bloom.ui.theme.Radii.sheet,
             color = scheme.surfaceContainer,
             modifier = Modifier.fillMaxWidth().fillMaxHeight(0.7f),
         ) {

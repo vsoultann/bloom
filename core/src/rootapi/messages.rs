@@ -51,6 +51,19 @@ pub struct RawReaction {
 pub struct AssetRef {
     #[prost(string, tag = "1")]
     pub uri: String,
+    /// original file name / type / size as uploaded (voice messages are recognised by name)
+    #[prost(message, optional, tag = "2")]
+    pub attachment: Option<AttachmentMeta>,
+}
+
+#[derive(Clone, PartialEq, Message)]
+pub struct AttachmentMeta {
+    #[prost(string, tag = "1")]
+    pub file_name: String,
+    #[prost(string, tag = "2")]
+    pub mime_type: String,
+    #[prost(int64, tag = "3")]
+    pub length: i64,
 }
 
 #[derive(Clone, PartialEq, Message)]

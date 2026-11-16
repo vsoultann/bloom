@@ -31,6 +31,13 @@ import androidx.compose.ui.unit.dp
 import app.bloom.ui.theme.LocalLook
 import app.bloom.ui.theme.Motion
 
+// Blur mask filters are immutable and keyed only by radius; reusing them avoids allocating
+// one per glow per frame (living icons tick at 30 Hz, the chat panel glow on every slide frame).
+private val maskCache = HashMap<Int, BlurMaskFilter>()
+private fun mask(radiusPx: Float): BlurMaskFilter = maskCache.getOrPut(radiusPx.toInt().coerceAtLeast(1)) {
+    BlurMaskFilter(radiusPx.toInt().coerceAtLeast(1).toFloat(), BlurMaskFilter.Blur.NORMAL)
+}
+
 private fun drawOutlinePath(canvas: android.graphics.Canvas, outline: androidx.compose.ui.graphics.Outline, paint: NativePaint) {
     when (outline) {
         is androidx.compose.ui.graphics.Outline.Generic -> canvas.drawPath(outline.path.asAndroidPath(), paint)
@@ -97,7 +104,7 @@ fun Modifier.contourGlow(
         drawIntoCanvas { c ->
             halo.shader = shader
             halo.strokeWidth = stroke.toPx() * 3f
-            halo.maskFilter = BlurMaskFilter(glowRadius.toPx(), BlurMaskFilter.Blur.NORMAL)
+            halo.maskFilter = mask(glowRadius.toPx())
             halo.alpha = (k * 200).toInt()
             drawOutlinePath(c.nativeCanvas, outline, halo)
             line.shader = shader
@@ -120,7 +127,7 @@ fun Modifier.softGlow(shape: Shape, color: Color, radius: Dp = 18.dp, alpha: Flo
     return drawBehind {
         val outline = shape.createOutline(size, layoutDirection, this)
         paint.color = color.copy(alpha = alpha).toArgb()
-        paint.maskFilter = BlurMaskFilter(radius.toPx(), BlurMaskFilter.Blur.NORMAL)
+        paint.maskFilter = mask(radius.toPx())
         drawIntoCanvas { drawOutlinePath(it.nativeCanvas, outline, paint) }
     }
 }

@@ -95,34 +95,46 @@ import java.util.Locale
 /** Frosted glass in looks that have it, a solid bar otherwise. */
 @Composable
 private fun Modifier.bar(haze: HazeState, solid: Color): Modifier =
-    if (LocalLook.current.glass) hazeBlur(HazeInput.Sources(haze), style = glassStyle()).background(solid.copy(alpha = 0.72f))
+    if (LocalLook.current.glass) hazeBlur(HazeInput.Sources(haze), style = glassStyle())
     else background(solid)
 
-/** Top bar: blur that feathers out downward (no hard-edged dark box). */
+/** Saturation boost so blurred colours glow through instead of greying out (iOS-style vibrancy). */
+private val vibrancy = dev.chrisbanes.haze.blur.HazeColorEffect.colorFilter(
+    androidx.compose.ui.graphics.ColorFilter.colorMatrix(androidx.compose.ui.graphics.ColorMatrix().apply { setToSaturation(1.7f) }),
+)
+
+/**
+ * Top bar: a rich, progressive blur — strongest behind the title, fading smoothly to
+ * nothing at the bottom — with vibrancy, a light tint and fine grain. No dark slab.
+ */
 @Composable
 private fun Modifier.featheredBar(haze: HazeState, solid: Color): Modifier {
     if (!LocalLook.current.glass) return background(solid)
-    val style = remember(solid) {
+    val strength = app.bloom.ui.theme.Ui.blurStrength
+    val style = remember(solid, strength) {
         HazeBlurStyle {
-            blurRadius(app.bloom.ui.theme.Ui.blurStrength.dp * 1.5f)
-            noiseFactor(0.05f)
-            backgroundColor(solid.copy(alpha = 0.8f))
-            // fully blurred behind the title, fading to nothing at the bottom edge
-            mask(Brush.verticalGradient(0f to Color.Black, 0.72f to Color.Black, 1f to Color.Transparent))
+            blurRadius(strength.dp * 1.5f)
+            noiseFactor(0.06f)
+            backgroundColor(solid)
+            colorEffects(listOf(vibrancy, dev.chrisbanes.haze.blur.HazeColorEffect.tint(solid.copy(alpha = 0.32f))))
+            progressive(dev.chrisbanes.haze.HazeProgressive.verticalGradient(startIntensity = 1f, endIntensity = 0f))
         }
     }
+    // a whisper of shade right at the top keeps the clock and title readable on bright media
     return hazeBlur(HazeInput.Sources(haze), style = style)
-        .background(Brush.verticalGradient(0f to solid.copy(alpha = 0.92f), 0.62f to solid.copy(alpha = 0.85f), 1f to Color.Transparent))
+        .background(Brush.verticalGradient(0f to solid.copy(alpha = 0.35f), 0.55f to solid.copy(alpha = 0.12f), 1f to Color.Transparent))
 }
 
 @Composable
 private fun glassStyle(): HazeBlurStyle {
     val tint = MaterialTheme.colorScheme.surfaceContainer
-    return remember(tint) {
+    val strength = app.bloom.ui.theme.Ui.blurStrength
+    return remember(tint, strength) {
         HazeBlurStyle {
-            blurRadius(app.bloom.ui.theme.Ui.blurStrength.dp * 1.67f)
-            noiseFactor(0.08f)
-            backgroundColor(tint.copy(alpha = 0.9f))
+            blurRadius(strength.dp * 1.67f)
+            noiseFactor(0.07f)
+            backgroundColor(tint)
+            colorEffects(listOf(vibrancy, dev.chrisbanes.haze.blur.HazeColorEffect.tint(tint.copy(alpha = 0.55f))))
         }
     }
 }
@@ -143,7 +155,14 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
     val firstLoad = vm.messages.isNotEmpty()
     LaunchedEffect(vm.selectedChannelId, firstLoad) { if (firstLoad) listState.scrollToItem(0) }
 
-    LaunchedEffect(composerHeight) { if (listState.firstVisibleItemIndex <= 1) listState.animateScrollToItem(0) }
+    // When the composer grows (reply bar, tray, typing line) and you're at the bottom, stay
+    // pinned there. Collected as a flow and snapped: an animated scroll restarted on every
+    // frame of the composer's own resize animation used to fight it and stutter.
+    LaunchedEffect(listState) {
+        snapshotFlow { composerHeight }.collect {
+            if (listState.firstVisibleItemIndex == 0 && !listState.isScrollInProgress) listState.scrollToItem(0)
+        }
+    }
 
     // Load older history when you get near the top.
     // Re-checks after each page arrives too, so sitting at the top keeps loading further back.
@@ -159,8 +178,11 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
 
     // The chat slides over the server/channel layer, so it must be opaque.
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-        ChatBackground(vm)
-        val isVoice = channel?.kind == ChannelKind.VOICE
+        // the background is a blur source too, so the bars frost the wallpaper/gradient
+        // instead of falling back to a flat slab where no messages are behind them
+        ChatBackground(vm, Modifier.hazeSource(haze, zIndex = 0f))
+        // voice channels, and DMs while you're in a call there, show the call stage on top
+        val isVoice = channel?.kind == ChannelKind.VOICE || (vm.selectedServerId == null && channel != null && vm.voice.channelId == channel.id)
         val topPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp + if (isVoice) 236.dp else 0.dp
         if (channel?.kind == ChannelKind.APP) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -187,7 +209,7 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
             LazyColumn(
                 state = listState,
                 reverseLayout = true,
-                modifier = Modifier.fillMaxSize().hazeSource(haze),
+                modifier = Modifier.fillMaxSize().hazeSource(haze, zIndex = 1f),
                 contentPadding = PaddingValues(
                     top = topPad + 8.dp,
                     // composerHeight already includes the keyboard and nav bar insets
@@ -240,8 +262,9 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
         val scrolledUp by remember { derivedStateOf { listState.firstVisibleItemIndex > 6 } }
         androidx.compose.animation.AnimatedVisibility(
             scrolledUp,
-            Modifier.align(Alignment.BottomEnd).navigationBarsPadding().imePadding().padding(end = 16.dp, bottom = 100.dp),
-            enter = scaleIn(Motion.spatialFast()) + fadeIn(), exit = scaleOut() + fadeOut(),
+            // composerHeight already includes the keyboard and navigation bar
+            Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = composerHeight + 16.dp),
+            enter = Motion.popIn(), exit = Motion.popOut(),
         ) {
             val scope = rememberCoroutineScope()
             SmallFloatingActionButton(onClick = { scope.launch { listState.animateScrollToItem(0) } }, containerColor = MaterialTheme.colorScheme.secondaryContainer) {
@@ -251,7 +274,7 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
 
         TopBar(vm, haze, onMenu, Modifier.align(Alignment.TopCenter))
         if (isVoice && channel != null) VoiceStage(vm, channel, Modifier.align(Alignment.TopCenter).padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp))
-        if (channel?.kind == ChannelKind.TEXT || channel?.kind == ChannelKind.ANNOUNCEMENT || isVoice) Composer(
+        if (channel?.kind == ChannelKind.TEXT || channel?.kind == ChannelKind.ANNOUNCEMENT || isVoice || vm.selectedServerId == null) Composer(
             vm, haze,
             Modifier.align(Alignment.BottomCenter).onSizeChanged { with(density) { composerHeight = it.height.toDp() } },
         )
@@ -285,13 +308,19 @@ private fun TopBar(vm: AppViewModel, haze: HazeState, onMenu: () -> Unit, modifi
         )
         Spacer(Modifier.width(6.dp))
         Column(Modifier.weight(1f)) {
-            Text(c?.name ?: "", style = MaterialTheme.typography.titleMedium, maxLines = 1)
-            Text(
-                c?.topic ?: "", style = MaterialTheme.typography.bodySmall,
+            Text(c?.name ?: "", style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            // an empty topic line used to push the title above the icons' centre line
+            if (!c?.topic.isNullOrBlank()) Text(
+                plainText(c!!.topic), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
         if (vm.selectedServerId == null && c != null) {
+            // call this DM / group (Root calls DMs through the same voice service as channels)
+            val inCall = vm.voice.channelId == c.id
+            IconButton(onClick = { if (inCall) vm.voice.leave() else vm.voice.join(c.id, vm.dms.firstOrNull { it.id == c.id }?.let { vm.dmName(it) } ?: c.name) }) {
+                Icon(if (inCall) Icons.Rounded.CallEnd else Icons.Rounded.Call, if (inCall) "Leave call" else "Call", tint = if (inCall) MaterialTheme.colorScheme.error else LocalContentColor.current)
+            }
             var adding by remember { mutableStateOf(false) }
             IconButton(onClick = { adding = true }) { Icon(Icons.Rounded.PersonAdd, "Add people") }
             if (adding) {
@@ -359,21 +388,28 @@ private fun SwipeToReply(enabled: Boolean, onReply: () -> Unit, modifier: Modifi
         },
         contentAlignment = Alignment.CenterStart,
     ) {
-        val offset = object { val value get() = dragX }
-        val p = (offset.value / threshold).coerceIn(0f, 1f)
-        // content first; the icon is an overlay that never changes the row's size
-        Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(-offset.value.toInt(), 0) }) { content() }
-        if (p > 0.02f) Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
-            val pop by animateFloatAsState(if (armed) 1.15f else 1f, Motion.spatialFast(), label = "replyPop")
-            val iconShape = MorphShape(BloomShapes.morph(BloomShapes.cookie, BloomShapes.circle), p, rotation = p * 270f)
-            Box(
-                Modifier.padding(end = 16.dp).size(36.dp)
-                    .graphicsLayer { scaleX = p * pop; scaleY = p * pop; alpha = p; rotationZ = (1 - p) * -180f }
-                    .clip(iconShape).background(if (armed) scheme.primary else scheme.secondaryContainer),
-                contentAlignment = Alignment.Center,
-            ) { Icon(Icons.AutoMirrored.Rounded.Reply, "Reply", Modifier.size(20.dp), tint = if (armed) scheme.onPrimary else scheme.onSecondaryContainer) }
+        // The message itself only moves (layout-phase offset); it never recomposes while you drag.
+        Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(-dragX.toInt(), 0) }) { content() }
+        val showIcon by remember { derivedStateOf { dragX > threshold * 0.02f } }
+        if (showIcon) Box(Modifier.matchParentSize(), contentAlignment = Alignment.CenterEnd) {
+            ReplyIcon(progress = { (dragX / threshold).coerceIn(0f, 1f) }, armed = armed)
         }
     }
+}
+
+/** The morphing reply bubble; only this small piece recomposes as the drag progresses. */
+@Composable
+private fun ReplyIcon(progress: () -> Float, armed: Boolean) {
+    val scheme = MaterialTheme.colorScheme
+    val pop by animateFloatAsState(if (armed) 1.15f else 1f, Motion.spatialFast(), label = "replyPop")
+    val morph = remember { BloomShapes.morph(BloomShapes.cookie, BloomShapes.circle) }
+    val p = progress()
+    Box(
+        Modifier.padding(end = 16.dp).size(36.dp)
+            .graphicsLayer { val q = progress(); scaleX = q * pop; scaleY = q * pop; alpha = q; rotationZ = (1 - q) * -180f }
+            .clip(MorphShape(morph, p, rotation = p * 270f)).background(if (armed) scheme.primary else scheme.secondaryContainer),
+        contentAlignment = Alignment.Center,
+    ) { Icon(Icons.AutoMirrored.Rounded.Reply, "Reply", Modifier.size(20.dp), tint = if (armed) scheme.onPrimary else scheme.onSecondaryContainer) }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -384,7 +420,7 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
     var menu by remember { mutableStateOf(false) }
     var reactPicker by remember { mutableStateOf(false) }
     if (reactPicker) androidx.compose.ui.window.Dialog(onDismissRequest = { reactPicker = false }) {
-        Surface(shape = RoundedCornerShape(28.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh) {
+        Surface(shape = app.bloom.ui.theme.Radii.dialog, color = MaterialTheme.colorScheme.surfaceContainerHigh) {
             Column(Modifier.padding(top = 12.dp)) {
                 Text("React", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp))
                 EmojiPanel(vm) { picked -> vm.react(m, vm.reactionCode(picked)); reactPicker = false }
@@ -396,11 +432,17 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
     val clipboard = LocalClipboardManager.current
     val scheme = MaterialTheme.colorScheme
 
-    // Fresh messages ease in: fade + a short rise (or a soft blur-in). No scaling.
-    var appeared by remember { mutableStateOf(System.currentTimeMillis() / 1000 - m.ts > 5 || app.bloom.ui.theme.Ui.messageEnter == "none") }
-    LaunchedEffect(Unit) { appeared = true }
-    val enter by animateFloatAsState(if (appeared) 1f else 0f, Motion.smooth(), label = "enter")
+    // Fresh messages ease in on a fixed, decelerating curve (no spring wobble, no scaling).
     val enterStyle = app.bloom.ui.theme.Ui.messageEnter
+    val enterAnim = remember(m.id) {
+        androidx.compose.animation.core.Animatable(if (System.currentTimeMillis() / 1000 - m.ts > 5 || enterStyle == "none") 1f else 0f)
+    }
+    LaunchedEffect(m.id) {
+        if (enterAnim.value < 1f) {
+            if (!app.bloom.ui.theme.Ui.animations) enterAnim.snapTo(1f)
+            else enterAnim.animateTo(1f, Motion.tween(460, EnterEasing))
+        }
+    }
 
     val deletedTint by animateFloatAsState(if (m.deleted) 1f else 0f, Motion.effects(), label = "del")
     val flash by animateFloatAsState(if (vm.flashId == m.id) 1f else 0f, Motion.effects(), label = "flash")
@@ -412,18 +454,27 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
         modifier
             .fillMaxWidth()
             .graphicsLayer {
-                alpha = enter
-                if (enterStyle == "rise" || enterStyle == "blur") translationY = (1f - enter) * 14.dp.toPx()
-                if (enterStyle == "blur" && enter < 0.99f && app.bloom.ui.theme.Ui.elementBlur && app.bloom.ui.theme.Ui.effectsOn) {
-                    val r = (1f - enter) * 10.dp.toPx()
-                    renderEffect = android.graphics.RenderEffect.createBlurEffect(r.coerceAtLeast(0.1f), r.coerceAtLeast(0.1f), android.graphics.Shader.TileMode.DECAL).asComposeRenderEffect()
-                }
+                val p = enterAnim.value
+                if (p < 1f) {
+                    // opacity arrives a little ahead of position, so it never looks "late"
+                    alpha = (p * 1.35f).coerceAtMost(1f)
+                    if (enterStyle == "rise" || enterStyle == "blur") translationY = (1f - p) * 12.dp.toPx()
+                    if (enterStyle == "blur" && app.bloom.ui.theme.Ui.elementBlur && app.bloom.ui.theme.Ui.effectsOn) {
+                        // most of the blur clears early (squared falloff); whole-pixel radii reuse
+                        // cached effects, and below 1px there's nothing left to see, so no snap
+                        val r = ((1f - p) * (1f - p) * 9.dp.toPx()).toInt()
+                        renderEffect = if (r >= 1) blurEffect(r) else null
+                    } else renderEffect = null
+                } else { alpha = 1f; translationY = 0f; renderEffect = null }
             }
-            .background(scheme.errorContainer.copy(alpha = 0.25f * deletedTint))
-            .background(scheme.primary.copy(alpha = 0.22f * flash))
-            .background(scheme.tertiary.copy(alpha = 0.16f * replyingThis))
-            .then(if (forMe) Modifier.background(scheme.primary.copy(alpha = 0.12f)).drawBehind { drawRect(scheme.primary, size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) } else Modifier)
-            .drawBehind { if (replyingThis > 0.01f) drawRect(scheme.tertiary.copy(alpha = replyingThis), size = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)) }
+            .drawBehind {
+                // tints are read here (draw phase), so a flash or reply highlight never recomposes the message
+                val bar = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)
+                if (deletedTint > 0.01f) drawRect(scheme.errorContainer.copy(alpha = 0.25f * deletedTint))
+                if (forMe) { drawRect(scheme.primary.copy(alpha = 0.12f)); drawRect(scheme.primary, size = bar) }
+                if (flash > 0.01f) drawRect(scheme.primary.copy(alpha = 0.22f * flash))
+                if (replyingThis > 0.01f) { drawRect(scheme.tertiary.copy(alpha = 0.16f * replyingThis)); drawRect(scheme.tertiary.copy(alpha = replyingThis), size = bar) }
+            }
             .combinedClickable(onClick = {}, onLongClick = { menu = true })
             .padding(start = 12.dp, end = 12.dp, top = if (grouped) 1.dp else if (vm.compact) 6.dp else 10.dp, bottom = if (vm.compact) 1.dp else 2.dp),
     ) {
@@ -488,23 +539,23 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
                         }
                     }
                 }
-                AnimatedVisibility(showHistory, enter = expandVertically(Motion.spatial()) + fadeIn(), exit = shrinkVertically(Motion.spatial()) + fadeOut()) {
-                    Column(Modifier.padding(top = 4.dp).clip(RoundedCornerShape(12.dp)).background(scheme.surfaceContainerHigh).padding(8.dp)) {
+                AnimatedVisibility(showHistory, enter = Motion.expandIn(), exit = Motion.shrinkOut()) {
+                    Column(Modifier.padding(top = 4.dp).clip(app.bloom.ui.theme.Radii.card).background(scheme.surfaceContainerHigh).padding(8.dp)) {
                         m.editHistory.forEach {
                             Text("• $it", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, textDecoration = TextDecoration.LineThrough)
                         }
                     }
                 }
-                AnimatedVisibility(showRaw, enter = expandVertically(Motion.spatial()) + fadeIn(), exit = shrinkVertically(Motion.spatial()) + fadeOut()) {
+                AnimatedVisibility(showRaw, enter = Motion.expandIn(), exit = Motion.shrinkOut()) {
                     Text(
                         m.content, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(top = 4.dp).clip(RoundedCornerShape(10.dp)).background(scheme.surfaceContainerHighest).padding(8.dp),
+                        modifier = Modifier.padding(top = 4.dp).clip(app.bloom.ui.theme.Radii.tile).background(scheme.surfaceContainerHighest).padding(8.dp),
                     )
                 }
                 if (m.reactions.isNotEmpty()) Reactions(vm, m)
             }
         }
-        DropdownMenu(menu, onDismissRequest = { menu = false }, shape = RoundedCornerShape(20.dp)) {
+        DropdownMenu(menu, onDismissRequest = { menu = false }, shape = app.bloom.ui.theme.Radii.card) {
             Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 listOf("🔥", "😂", "💜", "👀", "✨").forEach { e ->
                     Text(e, style = MaterialTheme.typography.titleLarge, modifier = Modifier.clip(CircleShape).clickable { vm.react(m, e); menu = false }.padding(8.dp))
@@ -612,10 +663,11 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
             .imePadding()
             .padding(bottom = 8.dp)
             .clip(RoundedCornerShape(if (LocalLook.current.look == app.bloom.ui.theme.Look.DISCORD) 24.dp else 28.dp))
-            .bar(haze, MaterialTheme.colorScheme.surfaceContainerHigh)
-            .animateContentSize(Motion.spatial()),
+            // no animateContentSize here: every child below already animates its own size,
+            // and animating the parent too made the composer lag behind and wobble
+            .bar(haze, MaterialTheme.colorScheme.surfaceContainerHigh),
     ) {
-        AnimatedVisibility(typers.isNotEmpty(), enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        AnimatedVisibility(typers.isNotEmpty(), enter = Motion.expandIn(), exit = Motion.shrinkOut()) {
             Box(Modifier.padding(start = 18.dp, top = 8.dp)) { TypingIndicator(vm, typerIds) }
         }
         val banner = when {
@@ -624,7 +676,7 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
                 (if (vm.replying.size > 1) " (${vm.replying.size} messages)" else "")
             else -> null
         }
-        AnimatedVisibility(banner != null, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        AnimatedVisibility(banner != null, enter = Motion.expandIn(), exit = Motion.shrinkOut()) {
             Row(Modifier.fillMaxWidth().padding(start = 18.dp, end = 6.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(banner ?: "", style = MaterialTheme.typography.labelLarge, color = scheme.primary, modifier = Modifier.weight(1f))
                 IconButton(onClick = { vm.editing = null; vm.replyingTo = null; text = "" }, Modifier.size(32.dp)) {
@@ -632,7 +684,7 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
                 }
             }
         }
-        AnimatedVisibility(preview.isNotEmpty(), enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        AnimatedVisibility(preview.isNotEmpty(), enter = Motion.expandIn(), exit = Motion.shrinkOut()) {
             Row(Modifier.padding(start = 18.dp, end = 18.dp, top = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Rounded.AutoAwesome, null, Modifier.size(14.dp), tint = scheme.tertiary)
                 Spacer(Modifier.width(6.dp))
@@ -669,7 +721,7 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
                 .filter { q.isEmpty() || it.second.contains(q, true) }.take(6)
             LazyColumn(
                 Modifier.fillMaxWidth().heightIn(max = 260.dp).padding(horizontal = 8.dp, vertical = 4.dp)
-                    .clip(RoundedCornerShape(20.dp)).background(scheme.surfaceContainerHigh),
+                    .clip(app.bloom.ui.theme.Radii.panel).background(scheme.surfaceContainerHigh),
             ) {
                 items(people, key = { "u${it.id}" }) { u ->
                     Row(
@@ -748,20 +800,31 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
                 var out = text
                 picked.entries.sortedByDescending { it.key.length }.forEach { (label, token) -> out = out.replace(label, token) }
                 vm.send(out); text = ""; picked.clear(); panel = ComposerPanel.NONE
-            }) {
+            }) { recording, level ->
+                // while recording, the Material shape comes alive: it turns and swells with your voice
+                val spin = remember { androidx.compose.animation.core.Animatable(0f) }
+                LaunchedEffect(recording) {
+                    if (recording) spin.animateTo(spin.value + 3600f, androidx.compose.animation.core.tween(60_000, easing = androidx.compose.animation.core.LinearEasing))
+                    else spin.animateTo(0f, Motion.spatial())
+                }
+                val loud by animateFloatAsState(if (recording) level.coerceIn(0f, 1f) else 0f, Motion.spatialFast(), label = "loud")
+                val recShape = remember { BloomShapes.morph(BloomShapes.cookie, BloomShapes.sunny) }
+                val liveShape = if (recording && LocalLook.current.iconMode == app.bloom.ui.theme.IconMode.LIVING)
+                    MorphShape(recShape, (loud * 1.6f).coerceIn(0f, 1f), spin.value) else shape
                 Box(
                     Modifier
                         .size(48.dp)
-                        .graphicsLayer { scaleX = sendScale; scaleY = sendScale }
-                        .softGlow(shape, scheme.primary, 12.dp, 0.5f * progress.coerceIn(0f, 1f))
-                        .clip(shape)
-                        .background(if (canSend) scheme.primary else scheme.secondaryContainer),
+                        .graphicsLayer { scaleX = sendScale * (1f + loud * 0.18f); scaleY = scaleX }
+                        .softGlow(liveShape, if (recording) scheme.error else scheme.primary, 12.dp, if (recording) 0.6f + loud * 0.4f else 0.5f * progress.coerceIn(0f, 1f))
+                        .clip(liveShape)
+                        .background(if (recording) scheme.error else if (canSend) scheme.primary else scheme.secondaryContainer),
                     contentAlignment = Alignment.Center,
                 ) {
                     when {
                         vm.uploading -> MorphingLoader(size = 24.dp, color = scheme.onPrimary)
                         editing != null -> Icon(Icons.Rounded.Check, "Save", tint = scheme.onPrimary)
                         canSend -> Icon(Icons.AutoMirrored.Rounded.Send, "Send", tint = scheme.onPrimary)
+                        recording -> Icon(Icons.Rounded.Mic, "Recording", tint = scheme.onError)
                         else -> Icon(Icons.Rounded.Mic, "Hold to record a voice message", tint = scheme.onSecondaryContainer)
                     }
                 }
@@ -771,7 +834,7 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
             panel,
             // panels get a solid background so chat text never shows through the buttons
             modifier = Modifier.background(if (panel == ComposerPanel.NONE) Color.Transparent else scheme.surfaceContainerHigh),
-            transitionSpec = { (expandVertically(Motion.spatial()) + fadeIn()) togetherWith (shrinkVertically(Motion.spatial()) + fadeOut()) },
+            transitionSpec = { (expandVertically(Motion.spatial()) + fadeIn(Motion.effects())) togetherWith (shrinkVertically(Motion.spatial()) + fadeOut(Motion.effects())) },
             label = "panel",
         ) { p ->
             when (p) {
@@ -1058,6 +1121,15 @@ fun ChatIntro(vm: AppViewModel) {
     }
 }
 
+/** Material's "emphasized decelerate": starts quick, settles gently. */
+internal val EnterEasing = androidx.compose.animation.core.CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
+
+/** Blur effects by whole-pixel radius, built once and reused for every message. */
+private val blurCache = HashMap<Int, androidx.compose.ui.graphics.RenderEffect>()
+internal fun blurEffect(r: Int): androidx.compose.ui.graphics.RenderEffect = blurCache.getOrPut(r) {
+    android.graphics.RenderEffect.createBlurEffect(r.toFloat(), r.toFloat(), android.graphics.Shader.TileMode.DECAL).asComposeRenderEffect()
+}
+
 /** Strips Bloom markers and markdown for one-line previews (replies, notifications). */
 fun plainText(s: String): String = s
     .replace(Regex("\\|\\|([^|]*)\\|\\|"), "•••")
@@ -1126,6 +1198,9 @@ private fun AttachmentView(vm: AppViewModel, a: app.bloom.core.Attachment) {
     val scheme = MaterialTheme.colorScheme
     val uri = androidx.compose.ui.platform.LocalUriHandler.current
     val radius = LocalLook.current.cardRadius * 0.6f
+    // voice messages arrive as m4a files (sometimes typed as video): recognise Root's name format first
+    val voice = VoiceNames.decode(a.name)
+    if (voice != null && a.url != null) { VoiceMessage(a.url, voice.first, voice.second); return }
     when (a.kind) {
         app.bloom.core.AttachmentKind.IMAGE -> if (a.url != null) {
             // The decoded image's own shape wins: Root's stored size ignores photo rotation

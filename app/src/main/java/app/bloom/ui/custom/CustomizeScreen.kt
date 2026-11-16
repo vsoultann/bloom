@@ -72,8 +72,8 @@ import kotlin.math.roundToInt
 private val PageMargin = 20.dp
 private const val MaxRadiusPx = 45f
 private const val DefaultRadiusPx = 20f
-private val CardShape = RoundedCornerShape(22.dp)
-private val SliderCardShape = RoundedCornerShape(20.dp)
+private val CardShape @androidx.compose.runtime.Composable get() = app.bloom.ui.theme.Radii.panel
+private val SliderCardShape @androidx.compose.runtime.Composable get() = app.bloom.ui.theme.Radii.panel
 private val CardTextInset = 22.dp
 private val CardLabel = TextStyle(fontWeight = FontWeight.SemiBold, fontSize = 15.sp, letterSpacing = (-0.03).em)
 private val CardValue = TextStyle(fontWeight = FontWeight.Bold, fontSize = 32.sp, lineHeight = 34.sp, letterSpacing = (-0.045).em)
@@ -247,7 +247,7 @@ private fun <T> StylePager(category: String, styles: List<T>, selected: T, nameO
     Column(Modifier.fillMaxWidth()) {
         HorizontalPager(pager, contentPadding = PaddingValues(end = 40.dp), pageSpacing = 12.dp, modifier = Modifier.fillMaxWidth()) { page ->
             val style = styles[page]
-            val ring by animateColorAsState(if (style == selected) scheme.primary else Color.Transparent, tween(220), label = "ring")
+            val ring by animateColorAsState(if (style == selected) scheme.primary else Color.Transparent, app.bloom.ui.theme.Motion.effects(), label = "ring")
             Box(
                 Modifier.fillMaxWidth().height(170.dp).clip(CardShape).background(scheme.surfaceContainerHigh)
                     .clickable {
@@ -340,14 +340,14 @@ private fun EntrancePreview(style: String) {
             key(cycle, i) {
                 var on by remember { mutableStateOf(style == "none") }
                 LaunchedEffect(Unit) { kotlinx.coroutines.delay(150L * i); on = true }
-                val p by animateFloatAsState(if (on) 1f else 0f, Motion.smooth(), label = "pv")
+                val p by animateFloatAsState(if (on) 1f else 0f, app.bloom.ui.theme.Motion.tween(460, app.bloom.ui.screens.EnterEasing), label = "pv")
                 Box(
                     Modifier.graphicsLayer {
-                        alpha = if (style == "none") 1f else p
+                        alpha = if (style == "none") 1f else (p * 1.35f).coerceAtMost(1f)
                         if (style == "rise" || style == "blur") translationY = (1f - p) * 12.dp.toPx()
-                        if (style == "blur" && p < 0.99f) {
-                            val r = ((1f - p) * 8.dp.toPx()).coerceAtLeast(0.1f)
-                            renderEffect = android.graphics.RenderEffect.createBlurEffect(r, r, android.graphics.Shader.TileMode.DECAL).asComposeRenderEffect()
+                        if (style == "blur") {
+                            val r = ((1f - p) * (1f - p) * 9.dp.toPx()).toInt()
+                            renderEffect = if (r >= 1) app.bloom.ui.screens.blurEffect(r) else null
                         }
                     }.size(width = (70 + i * 18).dp, height = 18.dp).clip(RoundedCornerShape(9.dp)).background(if (i == 1) scheme.tertiary else scheme.primary),
                 )

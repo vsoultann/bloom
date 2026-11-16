@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.unit.dp
@@ -94,14 +95,24 @@ internal fun SignedIn(vm: AppViewModel) {
 
     Box(Modifier.fillMaxSize().onSizeChanged { width = it.width.toFloat() }.background(MaterialTheme.colorScheme.surfaceContainerLowest)) {
         BackgroundShapes()
-        Box(Modifier.fillMaxSize().graphicsLayer { scaleX = recede; scaleY = recede }.blur(blur)) {
+        // Both values are read inside the layer block, so the animation only redraws:
+        // the screen underneath is never recomposed frame by frame.
+        val blurOn = app.bloom.ui.theme.Ui.effectsOn
+        Box(Modifier.fillMaxSize().graphicsLayer {
+            scaleX = recede; scaleY = recede
+            val r = if (blurOn) blur.toPx().toInt() else 0
+            renderEffect = if (r >= 1) blurEffect(r) else null
+        }) {
             // Base layer: rail + side pane
             Row(Modifier.fillMaxSize()) {
                 ServerRail(vm)
-                val fraction = if (openX > 0f) offset.value / openX else 0f
                 Box(
                     Modifier.weight(1f).fillMaxHeight().background(panel(MaterialTheme.colorScheme.surfaceContainerLow)).padding(end = 64.dp)
-                        .graphicsLayer { alpha = 0.4f + 0.6f * fraction; translationX = (1 - fraction) * -40f },
+                        .graphicsLayer {
+                            // read the drag position here (draw phase), not in composition
+                            val fraction = if (openX > 0f) offset.value / openX else 0f
+                            alpha = 0.4f + 0.6f * fraction; translationX = (1 - fraction) * -40f
+                        },
                 ) {
                     AnimatedContent(
                         targetState = vm.selectedServerId,
@@ -115,13 +126,15 @@ internal fun SignedIn(vm: AppViewModel) {
             }
 
             // Foreground: chat / plugins panel that slides
-            val radiusAnim by animateDpAsState(if (offset.value > 1f) 28.dp else 0.dp, Motion.spatial(), label = "r")
+            // only flips twice per slide, so the panel recomposes twice, not every frame
+            val slid by remember { androidx.compose.runtime.derivedStateOf { offset.value > 1f } }
+            val radiusAnim by animateDpAsState(if (slid) LocalLook.current.cardRadius else 0.dp, Motion.spatial(), label = "r")
             val radius = radiusAnim.coerceAtLeast(0.dp)
             Box(
                 Modifier
                     .offset { IntOffset(offset.value.roundToInt(), 0) }
                     .fillMaxSize()
-                    .then(if (offset.value > 1f) Modifier.softGlow(RoundedCornerShape(radius), MaterialTheme.colorScheme.primary, 24.dp, 0.25f) else Modifier)
+                    .then(if (slid) Modifier.softGlow(RoundedCornerShape(radius), MaterialTheme.colorScheme.primary, 24.dp, 0.25f) else Modifier)
                     .clip(RoundedCornerShape(radius))
                     .draggable(
                         rememberDraggableState { d -> scope.launch { offset.snapTo((offset.value + d).coerceIn(0f, openX)) } },
@@ -141,6 +154,8 @@ internal fun SignedIn(vm: AppViewModel) {
                         Screen.Settings -> SettingsScreen(vm, onBack = { vm.screen = Screen.Chat })
                         Screen.EditProfile -> EditProfileScreen(vm, onBack = { vm.screen = Screen.Settings })
                         Screen.Customize -> app.bloom.ui.custom.CustomizeScreen(vm, onBack = { vm.screen = Screen.Settings })
+                        Screen.You -> app.bloom.ui.custom.YouScreen(vm, onBack = { vm.screen = Screen.Chat })
+                        is Screen.ServerRoles -> RolesScreen(vm, s.serverId, onBack = { vm.screen = Screen.Chat })
                         Screen.Notifications -> Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
                             MentionsPage(vm) { }
                             IconButton(onClick = { vm.screen = Screen.Chat }, Modifier.align(Alignment.TopEnd).statusBarsPadding().padding(8.dp)) { Icon(Icons.Rounded.Close, "Close") }
@@ -185,7 +200,7 @@ internal fun ServerRail(vm: AppViewModel) {
                     ServerIcon(s.name, s.hue, seed = s.id.toInt() * 31 + s.shape, selected = sel, imageUrl = s.iconUrl, onClick = { vm.selectServer(s.id) })
                     androidx.compose.animation.AnimatedVisibility(
                         s.mentions > 0, Modifier.align(Alignment.BottomEnd),
-                        enter = scaleIn(Motion.spatialFast()), exit = scaleOut(),
+                        enter = scaleIn(Motion.spatialFast()), exit = scaleOut(Motion.effects()),
                     ) {
                         Badge(containerColor = scheme.error) { Text("${s.mentions}") }
                     }
@@ -199,7 +214,17 @@ internal fun ServerRail(vm: AppViewModel) {
             }
         }
         item {
-            FilledTonalIconButton(onClick = { vm.screen = Screen.Settings }) { Icon(Icons.Rounded.Settings, "Settings") }
+            val src = remember { MutableInteractionSource() }
+            FilledTonalIconButton(onClick = { vm.screen = Screen.Settings }, modifier = Modifier.pressScale(src), interactionSource = src) { Icon(Icons.Rounded.Settings, "Settings") }
+        }
+        // you: opens the You page (ID card, stats, customize)
+        vm.me?.let { me ->
+            item {
+                val src = remember { MutableInteractionSource() }
+                Box(Modifier.padding(top = 4.dp).pressScale(src).clip(CircleShape).clickable(src, null) { vm.screen = Screen.You }) {
+                    Avatar(me.displayName, me.hue, 48.dp, userId = me.id, status = me.status)
+                }
+            }
         }
     }
 }
@@ -224,6 +249,11 @@ internal fun ChannelPane(vm: AppViewModel) {
                     Text(s.name, style = MaterialTheme.typography.headlineSmall.copy(shadow = Shadow(Color.Black.copy(alpha = 0.4f), Offset(0f, 2f), 8f)), color = Color.White)
                     Text("${s.channels.size} channels", style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.85f))
                 }
+            }
+        }
+        item(key = "server-actions") {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                AssistChip(onClick = { vm.screen = Screen.ServerRoles(s.id) }, label = { Text("Roles") }, leadingIcon = { Icon(Icons.Rounded.Shield, null, Modifier.size(18.dp)) })
             }
         }
         s.channels.groupBy { it.category }.forEach { (cat, chans) ->
@@ -275,7 +305,7 @@ internal fun ChannelPane(vm: AppViewModel) {
                             maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         )
                     }
-                    AnimatedVisibility(c.unread, enter = scaleIn(Motion.spatialFast()), exit = scaleOut()) {
+                    AnimatedVisibility(c.unread, enter = scaleIn(Motion.spatialFast()), exit = scaleOut(Motion.effects())) {
                         Box(Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(scheme.onSurface))
                     }
                 }
@@ -295,7 +325,7 @@ internal fun FriendsPane(vm: AppViewModel) {
             BoxWithConstraints(Modifier.fillMaxSize().padding(4.dp)) {
                 val half = maxWidth / 2
                 val x by animateDpAsState(if (tab == 0) 0.dp else half, Motion.spatial(), label = "homeTab")
-                Box(Modifier.offset(x = x).width(half).fillMaxHeight().clip(RoundedCornerShape(50)).background(scheme.primary))
+                Box(Modifier.offset { IntOffset(x.roundToPx(), 0) }.width(half).fillMaxHeight().clip(RoundedCornerShape(50)).background(scheme.primary))
                 Row(Modifier.fillMaxSize()) {
                     listOf("Messages", "Friends · ${vm.friends.size}").forEachIndexed { i, label ->
                         val c by animateColorAsState(if (tab == i) scheme.onPrimary else scheme.onSurfaceVariant, Motion.effects(), label = "ht")
@@ -407,10 +437,10 @@ internal fun ErrorToast(vm: AppViewModel, modifier: Modifier = Modifier) {
     val msg = vm.error
     LaunchedEffect(msg) { if (msg != null) { kotlinx.coroutines.delay(4500); if (vm.error == msg) vm.error = null } }
     AnimatedVisibility(msg != null, modifier.navigationBarsPadding().padding(bottom = 96.dp, start = 16.dp, end = 16.dp),
-        enter = slideInVertically(Motion.spatial()) { it } + fadeIn(), exit = slideOutVertically(Motion.spatial()) { it } + fadeOut()) {
+        enter = slideInVertically(Motion.spatial()) { it } + fadeIn(Motion.effects()), exit = slideOutVertically(Motion.spatial()) { it } + fadeOut(Motion.effects())) {
         val scheme = MaterialTheme.colorScheme
         Row(
-            Modifier.clip(RoundedCornerShape(16.dp)).background(scheme.inverseSurface).clickable { vm.error = null }.padding(horizontal = 16.dp, vertical = 12.dp),
+            Modifier.clip(app.bloom.ui.theme.Radii.card).background(scheme.inverseSurface).clickable { vm.error = null }.padding(horizontal = 16.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Rounded.ErrorOutline, null, tint = scheme.inversePrimary)

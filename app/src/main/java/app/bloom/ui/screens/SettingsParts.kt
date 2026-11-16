@@ -103,7 +103,7 @@ fun ColorPickerDialog(title: String, initial: Color, onDismiss: () -> Unit, onRe
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 // saturation/value square
                 Box(
-                    Modifier.fillMaxWidth().height(160.dp).clip(RoundedCornerShape(16.dp))
+                    Modifier.fillMaxWidth().height(160.dp).clip(app.bloom.ui.theme.Radii.card)
                         .pointerInput(h) {
                             fun set(o: Offset) {
                                 s = (o.x / size.width).coerceIn(0f, 1f)

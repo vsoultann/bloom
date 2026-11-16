@@ -181,6 +181,35 @@ Update this file whenever something changes status.
 - [x] Crash fixed: starting a call without microphone permission (permissions reset after the key switch) crashed the voice service; now asks for the mic first and never claims permissions it doesn't have
 - [x] Published: github.com/vsoultann/bloom (single clean commit), release v0.2.0 with APK
 
+## 18. Feedback round 9 (2026-11-15)
+- [x] Call crash: was the mic-permission crash after the key switch (fixed); calls now ask for the mic first
+- [~] Call button in DMs/groups (phone icon; red hang-up while in the call) + call stage shown in the DM
+- [x] Voice messages: Root's format is voice-message-<ms>-<48 hex peaks>.m4a (from Root's encodeVoiceMessageFileName); Bloom now records the waveform and uses it; received ones play with a waveform player
+- [x] Attachments carry their real file name/MIME/size (MessageUri.attachment, live: 175/176 named) — voice messages and audio recognised (old one now plays as audio, not a silent video)
+- [x] Hold-to-record rewritten as one gesture (release used to be lost); mic button turns into a living, voice-reactive Material shape while recording
+- [~] Top bar: true progressive blur + vibrancy (saturation) + light tint + grain instead of a dark slab; bars/composer same treatment
+- [x] Living icons default "always" (user had "off" saved; restored to always at their request)
+- [x] Roles: Roles page from the server header (live: 55/43/29 roles with counts), Manage roles (create / edit name, colour, mentionable, self-assign / delete; edits resend Root's permissions byte-for-byte), member roles on profiles with add/remove; white/black = "no colour"
+- [~] You page (Mochy profile page port, GPL-3.0): dot-grid header with giant drifting BLOOM, greeting, ID card with marquee strip and join date from the Root id, pull-down stretch/tilt/flip to stats, big-number cards, version capsule with GitHub update check, settings rows; opened from your avatar on the rail
+- [ ] Role create/edit/delete and calls not exercised live (they change things for other people)
+
+## 19. UI/UX audit (2026-11-16)
+Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast, performance).
+- [x] Side panel slide no longer recomposes the whole screen every frame (drag read in draw phase; measured 0.69% janky frames, median 7 ms, over 8 slides)
+- [~] Profile sheet open/close: background blur + recede done in the layer (was recomposing the app tree every frame)
+- [~] Profile sheet handle: pulling up grows the sheet live (did nothing until release); height animated in layout, not composition
+- [~] Swipe-to-reply: only the reply icon updates while dragging (the whole message used to recompose per frame)
+- [~] Composer: removed double size animation (wobble/lag when reply bar, typing line or tray appear); list stays pinned to the bottom without fighting the animation
+- [~] Jump-to-latest button sits above the composer at any height (was fixed 100 dp, covered by reply bar/tray)
+- [~] Message highlights (mention, flash, reply, deleted) drawn in one draw call, no recomposition
+- [~] Glow effects reuse blur filters (were allocated every frame)
+- [~] Every animation follows Customize → animations on/off + speed (≈35 transitions used library defaults; login, You page, Root/Discord tabs, upload bar used raw timings)
+- [~] Corners follow the look + rounding slider everywhere (≈25 hard-coded radii: sheets 28/32/36, cards 16–24, dialogs, menus, toasts)
+- [~] Top bar frosts the chat background too (hard black edge where no messages were behind it)
+- [~] Chat title vertically centred when the channel has no description
+- [~] Settings button on the rail has press feedback like the others; DM tab pill moves without recomposing
+- [~] Settings → Colors: warns when a custom text colour is hard to read (< 4.5:1) with a one-tap Fix. Current Material overrides: On primary #787877 on Primary #BABABA = ~2:1 (selected tab / Home icon text barely visible)
+
 ## Known bugs to check
 - [ ] Password field possibly cleared after tapping the eye (seen twice while the user was also using the phone)
 - [ ] Tapping a channel once opened a message author's profile instead

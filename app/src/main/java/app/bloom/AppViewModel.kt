@@ -56,6 +56,8 @@ sealed interface Screen {
     data object EditProfile : Screen
     data object Notifications : Screen
     data object Customize : Screen
+    data object You : Screen
+    data class ServerRoles(val serverId: Long) : Screen
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -223,6 +225,54 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { Core.social("roles", JSONObject().put("server_id", serverId)) as org.json.JSONArray }.onSuccess { a ->
                 roles[serverId] = (0 until a.length()).map { i -> a.getJSONObject(i).let { Triple(it.getString("id"), it.getString("name"), it.optString("color")) } }
             }
+        }
+    }
+
+    // ---- server roles ----
+    data class Role(val id: String, val name: String, val color: String, val members: Int, val mentionable: Boolean, val selfAssignable: Boolean)
+    val serverRoles = mutableStateMapOf<Long, List<Role>>()
+    /** (server, user) → role ids */
+    val memberRoles = mutableStateMapOf<Pair<Long, Long>, List<String>>()
+
+    fun loadServerRoles(serverId: Long, force: Boolean = false) = viewModelScope.launch {
+        if (!force && serverRoles[serverId]?.isNotEmpty() == true) return@launch
+        runCatching { Core.social("roles_all", JSONObject().put("server_id", serverId)) as org.json.JSONArray }
+            .onSuccess { a ->
+                serverRoles[serverId] = (0 until a.length()).map { i -> a.getJSONObject(i).let {
+                    Role(it.getString("id"), it.getString("name"), it.optString("color"), it.optInt("members"), it.optBoolean("mentionable"), it.optBoolean("self_assignable"))
+                } }
+            }.onFailure { error = "Couldn't load roles: ${it.message}" }
+    }
+
+    fun loadMemberRoles(serverId: Long, userId: Long) = viewModelScope.launch {
+        loadServerRoles(serverId)
+        runCatching { Core.social("member_roles", JSONObject().put("server_id", serverId).put("user_id", userId)) as org.json.JSONArray }
+            .onSuccess { a -> memberRoles[serverId to userId] = (0 until a.length()).map { a.getString(it) } }
+    }
+
+    private fun roleOp(op: String, args: JSONObject, serverId: Long, after: suspend () -> Unit = {}) = viewModelScope.launch {
+        runCatching { Core.social(op, args.put("server_id", serverId)) }
+            .onSuccess { loadServerRoles(serverId, force = true).join(); after() }
+            .onFailure { error = "Root said no: ${it.message}" }
+    }
+    fun createRole(serverId: Long, name: String, color: String) = roleOp("role_create", JSONObject().put("name", name).put("color", color), serverId)
+    fun editRole(serverId: Long, roleId: String, name: String, color: String, mentionable: Boolean, selfAssignable: Boolean) =
+        roleOp("role_edit", JSONObject().put("role_id", roleId).put("name", name).put("color", color).put("mentionable", mentionable).put("self_assignable", selfAssignable), serverId)
+    fun deleteRole(serverId: Long, roleId: String) = roleOp("role_delete", JSONObject().put("role_id", roleId), serverId)
+    /** role ids with a change in flight (spinner in the picker) */
+    val pendingRoles = mutableStateListOf<String>()
+
+    /** Optimistic: the picker updates at once; flips back if Root refuses. */
+    fun setMemberRole(serverId: Long, userId: Long, roleId: String, on: Boolean) {
+        val key = serverId to userId
+        val before = memberRoles[key].orEmpty()
+        memberRoles[key] = if (on) (before + roleId).distinct() else before - roleId
+        pendingRoles.add(roleId)
+        viewModelScope.launch {
+            runCatching {
+                Core.social(if (on) "member_role_add" else "member_role_remove", JSONObject().put("server_id", serverId).put("role_id", roleId).put("user_id", userId))
+            }.onFailure { memberRoles[key] = before; error = "Root said no: ${it.message}" }
+            pendingRoles.remove(roleId)
         }
     }
 
@@ -469,7 +519,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             npOn = settings.optBoolean("np_on", false)
             settings.optJSONArray("np_apps")?.let { a -> for (i in 0 until a.length()) npApps.add(a.getString(i)) }
             Ui.let { u ->
-                u.livingIcons = settings.optString("ui_living", "selected")
+                u.livingIcons = settings.optString("ui_living", "always")
                 u.emojiPack = settings.optString("ui_emoji", "system")
                 u.fontId = settings.optString("ui_font", "system")
                 u.fontScope = settings.optString("ui_font_scope", "all")
@@ -928,13 +978,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** Uploads a recorded voice message and sends it. */
-    fun sendVoice(file: File, durationMs: Long) {
+    fun sendVoice(file: File, durationMs: Long, samples: List<Float> = emptyList()) {
         val channel = selectedChannelId ?: return
         if (durationMs < 600) { file.delete(); return }
         viewModelScope.launch {
             uploading = true
             runCatching {
-                val token = Core.upload(file.absolutePath, "voice-message.m4a", "audio/mp4")
+                // Root's own name format makes it a voice message (duration + waveform) everywhere
+                val name = app.bloom.ui.screens.VoiceNames.encode(durationMs, samples)
+                val token = Core.upload(file.absolutePath, name, "audio/mp4")
                 messages.add(Core.send(channel, "", replyingTo?.id, listOf(token)))
             }.onFailure { error = it.message }
             replyingTo = null

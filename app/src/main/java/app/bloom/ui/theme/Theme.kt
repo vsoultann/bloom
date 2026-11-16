@@ -102,7 +102,7 @@ object Ui {
     /** hide the status bar for a full-screen look */
     var hideStatusBar by androidx.compose.runtime.mutableStateOf(false)
     /** server icons morph: "always" · "selected" (only the open one) · "off" */
-    var livingIcons by androidx.compose.runtime.mutableStateOf("selected")
+    var livingIcons by androidx.compose.runtime.mutableStateOf("always")
     /** emoji artwork: system · apple · fluent · google · twitter · facebook */
     var emojiPack by androidx.compose.runtime.mutableStateOf("system")
     /** font id (see Fonts), where it applies, and tweaks */
@@ -137,6 +137,40 @@ object Motion {
     /** smooth, no overshoot: for content appearing (messages, reactions) */
     fun <T> smooth(): FiniteAnimationSpec<T> = if (!Ui.animations) snap() else spring(dampingRatio = 1f, stiffness = k(260f))
     fun <T> quick(): FiniteAnimationSpec<T> = if (!Ui.animations) snap() else tween((140 / Ui.speed).toInt())
+    /** fixed-length decelerating tween (entrances that must not wobble); follows speed + on/off */
+    fun <T> tween(ms: Int, easing: androidx.compose.animation.core.Easing = androidx.compose.animation.core.FastOutSlowInEasing): FiniteAnimationSpec<T> =
+        if (!Ui.animations) snap() else androidx.compose.animation.core.tween((ms / Ui.speed).toInt().coerceAtLeast(1), easing = easing)
+    /** a hand-tuned spring that still follows the animation speed + on/off settings */
+    fun <T> spring(dampingRatio: Float, stiffness: Float): FiniteAnimationSpec<T> =
+        if (!Ui.animations) snap() else androidx.compose.animation.core.spring(dampingRatio, k(stiffness))
+
+    // Standard enter/exit transitions, so every show/hide in the app moves the same way.
+    fun fadeIn() = androidx.compose.animation.fadeIn(effects())
+    fun fadeOut() = androidx.compose.animation.fadeOut(effects())
+    fun expandIn() = androidx.compose.animation.expandVertically(spatial()) + fadeIn()
+    fun shrinkOut() = androidx.compose.animation.shrinkVertically(spatial()) + fadeOut()
+    fun popIn() = androidx.compose.animation.scaleIn(spatialFast()) + fadeIn()
+    fun popOut() = androidx.compose.animation.scaleOut(effects()) + fadeOut()
+}
+
+/**
+ * Shape tokens. Everything rounded goes through these so the look (Material / Discord /
+ * Root) and the Customize → rounding slider apply everywhere, not just to some screens.
+ */
+object Radii {
+    /** rows, list items, small tiles */
+    val row @Composable get() = RoundedCornerShape(LocalLook.current.rowRadius)
+    /** inline cards (embeds, quotes, menus) */
+    val card @Composable get() = MaterialTheme.shapes.medium
+    /** standalone cards and panels */
+    val panel @Composable get() = MaterialTheme.shapes.large
+    /** dialogs */
+    val dialog @Composable get() = MaterialTheme.shapes.extraLarge
+    /** bottom sheets: only the top corners */
+    val sheet @Composable get() = LocalLook.current.cardRadius.times(1.3f).let { RoundedCornerShape(topStart = it, topEnd = it) }
+    /** media thumbnails, small tiles inside cards */
+    val tile @Composable get() = MaterialTheme.shapes.small
+    val pill = RoundedCornerShape(50)
 }
 
 // Discord-style palette (dark). Values are the widely documented client greys/accent.
@@ -348,6 +382,20 @@ fun hueColor(hue: Int, tone: Float = if (LocalDark.current) 0.62f else 0.5f): Co
     val raw = Color(ColorUtils.HSLToColor(floatArrayOf(((hue % 360) + 360) % 360f, 0.6f, tone)))
     return lerp(raw, MaterialTheme.colorScheme.primary, LocalLook.current.hueHarmonize)
 }
+
+/** For text/icon roles: the background role they sit on (to check readability). */
+val ColorRole.textBackground: ColorRole? get() = when (this) {
+    ColorRole.ON_PRIMARY -> ColorRole.PRIMARY
+    ColorRole.ON_PRIMARY_CONTAINER -> ColorRole.PRIMARY_CONTAINER
+    ColorRole.ON_SECONDARY_CONTAINER -> ColorRole.SECONDARY_CONTAINER
+    ColorRole.ON_SURFACE -> ColorRole.BACKGROUND
+    ColorRole.ON_SURFACE_VARIANT -> ColorRole.SURFACE
+    ColorRole.ON_ERROR -> ColorRole.ERROR
+    else -> null
+}
+
+/** WCAG contrast ratio between two colours (1 … 21). Body text needs 4.5, large text/icons 3. */
+fun contrast(a: Color, b: Color): Double = ColorUtils.calculateContrast(a.copy(alpha = 1f).toArgb(), b.copy(alpha = 1f).toArgb())
 
 /** Text colour with guaranteed contrast on [bg] (WCAG-ish luminance test). */
 fun contentOn(bg: Color): Color =

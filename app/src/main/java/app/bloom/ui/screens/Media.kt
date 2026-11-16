@@ -18,6 +18,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -169,12 +175,12 @@ private fun RecentMedia(vm: AppViewModel) {
 @Composable
 fun PendingTray(vm: AppViewModel) {
     val scheme = MaterialTheme.colorScheme
-    AnimatedVisibility(vm.pending.isNotEmpty(), enter = expandVertically(Motion.spatial()) + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+    AnimatedVisibility(vm.pending.isNotEmpty(), enter = expandVertically(Motion.spatial()) + fadeIn(Motion.effects()), exit = shrinkVertically(Motion.spatial()) + fadeOut(Motion.effects())) {
         LazyRow(Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             items(vm.pending, key = { it.uri.toString() }) { p ->
                 Box(Modifier.size(84.dp).animateItem(placementSpec = Motion.spatial())) {
                     Box(
-                        Modifier.matchParentSize().clip(RoundedCornerShape(14.dp)).background(scheme.surfaceContainerHighest)
+                        Modifier.matchParentSize().clip(app.bloom.ui.theme.Radii.tile).background(scheme.surfaceContainerHighest)
                             .clickable(enabled = p.isImage || p.isVideo) {
                                 vm.viewer = Attachment(if (p.isVideo) AttachmentKind.VIDEO else AttachmentKind.IMAGE, p.name, p.uri.toString(), null, 0, 0)
                             },
@@ -229,7 +235,7 @@ fun GifPanel(vm: AppViewModel, onSent: () -> Unit) {
 @Composable
 private fun GifTile(preview: String, url: String, fav: Boolean, onSend: () -> Unit, onFav: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
-    Box(Modifier.fillMaxWidth().aspectRatio(1.3f).clip(RoundedCornerShape(12.dp)).background(scheme.surfaceContainerHighest).combinedClickable(onClick = onSend, onLongClick = onFav)) {
+    Box(Modifier.fillMaxWidth().aspectRatio(1.3f).clip(app.bloom.ui.theme.Radii.tile).background(scheme.surfaceContainerHighest).combinedClickable(onClick = onSend, onLongClick = onFav)) {
         AsyncImage(preview, null, Modifier.fillMaxSize(), contentScale = ContentScale.Crop)
         Icon(
             if (fav) Icons.Rounded.Star else Icons.Rounded.StarOutline, if (fav) "Unfavourite" else "Favourite",
@@ -327,7 +333,8 @@ class VoiceRecorder(private val ctx: android.content.Context) {
  * cancel, release to send. Tapping sends normally when there's something to send.
  */
 @Composable
-fun SendOrRecordButton(vm: AppViewModel, canSend: Boolean, onSend: () -> Unit, content: @Composable () -> Unit) {
+fun SendOrRecordButton(vm: AppViewModel, canSend: Boolean, onSend: () -> Unit, content: @Composable (recording: Boolean, level: Float) -> Unit) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val ctx = LocalContext.current
     val recorder = remember { VoiceRecorder(ctx) }
     var recording by remember { mutableStateOf(false) }
@@ -336,9 +343,12 @@ fun SendOrRecordButton(vm: AppViewModel, canSend: Boolean, onSend: () -> Unit, c
     var level by remember { mutableFloatStateOf(0f) }
     val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {}
     val cancelling = dragX < -140f
+    // loudness samples for the waveform Root shows on voice messages
+    val samples = remember { mutableListOf<Float>() }
     LaunchedEffect(recording) {
         val t0 = System.currentTimeMillis()
-        while (recording) { elapsed = System.currentTimeMillis() - t0; level = recorder.amplitude(); delay(60) }
+        if (recording) samples.clear()
+        while (recording) { elapsed = System.currentTimeMillis() - t0; level = recorder.amplitude(); samples.add(level); delay(60) }
     }
     Box(contentAlignment = Alignment.CenterEnd) {
         if (recording) {
@@ -354,54 +364,51 @@ fun SendOrRecordButton(vm: AppViewModel, canSend: Boolean, onSend: () -> Unit, c
                 Text(if (cancelling) "Release to cancel" else "‹ Slide to cancel", color = scheme.onErrorContainer, style = MaterialTheme.typography.labelMedium)
             }
         }
+        val grow by animateFloatAsState(if (recording) 1.28f else 1f, Motion.spatial(), label = "recGrow")
+        val currentCanSend by rememberUpdatedState(canSend)
+        val currentOnSend by rememberUpdatedState(onSend)
+        val viewConfig = androidx.compose.ui.platform.LocalViewConfiguration.current
         Box(
             Modifier
-                .graphicsLayer { translationX = if (recording) dragX.coerceAtMost(0f) else 0f; scaleX = if (recording) 1.25f else 1f; scaleY = scaleX }
-                .pointerInput(canSend) {
-                    detectTapGestures(
-                        onTap = { if (canSend) onSend() },
-                        onLongPress = {
-                            if (canSend) return@detectTapGestures
-                            if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                                askMic.launch(Manifest.permission.RECORD_AUDIO); return@detectTapGestures
-                            }
-                            dragX = 0f
-                            recording = recorder.start()
-                        },
-                    )
-                }
-                .pointerInput(recording) {
-                    if (!recording) return@pointerInput
-                    detectDragGestures(
-                        onDrag = { ch, d -> ch.consume(); dragX += d.x },
-                        onDragEnd = {
-                            val cancel = dragX < -140f
-                            val dur = recorder.stop(cancel)
-                            recording = false
-                            if (!cancel) recorder.file?.let { vm.sendVoice(it, dur) }
-                        },
-                        onDragCancel = { recorder.stop(true); recording = false },
-                    )
-                },
-        ) { content() }
-    }
-    // releasing without dragging ends the long-press gesture here
-    if (recording) {
-        BackHandler { recorder.stop(true); recording = false }
-        Box(Modifier.size(0.dp).pointerInput(Unit) {
-            awaitPointerEventScope {
-                while (true) {
-                    val e = awaitPointerEvent()
-                    if (e.changes.all { !it.pressed }) {
-                        val dur = recorder.stop(cancelling)
+                .graphicsLayer { translationX = if (recording) dragX.coerceAtMost(0f) else 0f; scaleX = grow; scaleY = grow }
+                // One gesture from finger down to finger up: a tap sends; holding records,
+                // sliding left cancels, letting go sends the voice message.
+                .pointerInput(Unit) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown()
+                        val longPress = withTimeoutOrNull(viewConfig.longPressTimeoutMillis) {
+                            waitForUpOrCancellation()
+                        }
+                        if (longPress != null) {
+                            // released before the long-press time: a plain tap
+                            if (currentCanSend) currentOnSend()
+                            return@awaitEachGesture
+                        }
+                        if (currentCanSend) { waitForUpOrCancellation(); return@awaitEachGesture }
+                        if (ContextCompat.checkSelfPermission(ctx, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                            askMic.launch(Manifest.permission.RECORD_AUDIO); return@awaitEachGesture
+                        }
+                        dragX = 0f
+                        recording = recorder.start()
+                        if (!recording) { vm.error = "Couldn't start recording"; return@awaitEachGesture }
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        var cancelled = false
+                        while (true) {
+                            val e = awaitPointerEvent()
+                            val ch = e.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!ch.pressed) break
+                            dragX += ch.positionChange().x
+                            ch.consume()
+                        }
+                        cancelled = dragX < -140f
+                        val dur = recorder.stop(cancelled)
                         recording = false
-                        if (!cancelling) recorder.file?.let { vm.sendVoice(it, dur) }
-                        break
+                        if (!cancelled) recorder.file?.let { vm.sendVoice(it, dur, samples.toList()) }
                     }
-                }
-            }
-        })
+                },
+        ) { content(recording, level) }
     }
+    if (recording) BackHandler { recorder.stop(true); recording = false }
 }
 
 // ---------------------------------------------------------------- viewers
@@ -567,6 +574,73 @@ fun VideoPlayer(url: String, onClose: () -> Unit, onSave: (() -> Unit)? = null, 
 }
 
 /** Inline player for voice messages and audio files. */
+/** Root's voice-message file name: voice-message-<ms>-<48 hex peaks>.m4a */
+object VoiceNames {
+    private val re = Regex("^voice-message-(\\d{1,6})-([0-9a-f]{48})\\.m4a$", RegexOption.IGNORE_CASE)
+    fun encode(durationMs: Long, samples: List<Float>): String {
+        val peaks = (0 until 48).map { i ->
+            if (samples.isEmpty()) 0f else {
+                val a = i * samples.size / 48
+                val b = maxOf(a + 1, (i + 1) * samples.size / 48)
+                samples.subList(a.coerceAtMost(samples.size - 1), b.coerceAtMost(samples.size)).maxOrNull() ?: 0f
+            }
+        }
+        // perceptual scale: quiet speech still shows
+        val hex = peaks.joinToString("") { p -> Integer.toHexString((kotlin.math.sqrt(p.coerceIn(0f, 1f)) * 15f).toInt().coerceIn(0, 15)) }
+        return "voice-message-${durationMs.coerceIn(0, 300_000)}-$hex.m4a"
+    }
+    /** (duration ms, 48 peaks 0..1) or null if this isn't a voice message */
+    fun decode(name: String): Pair<Long, List<Float>>? {
+        val m = re.find(name) ?: return null
+        return m.groupValues[1].toLong() to m.groupValues[2].map { it.digitToInt(16) / 15f }
+    }
+}
+
+/** A voice message: play/pause, waveform that fills as it plays, time. */
+@Composable
+fun VoiceMessage(url: String, durationMs: Long, peaks: List<Float>) {
+    val ctx = LocalContext.current
+    val scheme = MaterialTheme.colorScheme
+    val player = remember(url) { androidx.media3.exoplayer.ExoPlayer.Builder(ctx).build().apply { setMediaItem(androidx.media3.common.MediaItem.fromUri(url)); prepare() } }
+    DisposableEffect(player) { onDispose { player.release() } }
+    var playing by remember { mutableStateOf(false) }
+    var pos by remember { mutableLongStateOf(0L) }
+    LaunchedEffect(player) {
+        while (true) {
+            playing = player.isPlaying
+            pos = player.currentPosition
+            if (player.playbackState == androidx.media3.common.Player.STATE_ENDED) { player.seekTo(0); player.pause() }
+            delay(if (playing) 50 else 300)
+        }
+    }
+    val dur = if (player.duration > 0) player.duration else durationMs
+    val frac = if (dur > 0) (pos.toFloat() / dur).coerceIn(0f, 1f) else 0f
+    Row(
+        Modifier.padding(top = 6.dp).widthIn(max = 300.dp).clip(RoundedCornerShape(50)).background(scheme.secondaryContainer).padding(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            Modifier.size(40.dp).clip(CircleShape).background(scheme.primary).clickable { if (player.isPlaying) player.pause() else player.play() },
+            contentAlignment = Alignment.Center,
+        ) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "Pause" else "Play", tint = scheme.onPrimary) }
+        Spacer(Modifier.width(10.dp))
+        Canvas(Modifier.weight(1f).height(32.dp).pointerInput(dur) { detectTapGestures { o -> player.seekTo((o.x / size.width * dur).toLong()) } }) {
+            val n = peaks.size.coerceAtLeast(1)
+            val gap = size.width / n
+            val bar = (gap * 0.55f).coerceAtLeast(2f)
+            peaks.forEachIndexed { i, p ->
+                val h = (size.height * (0.15f + 0.85f * p)).coerceAtLeast(bar)
+                val x = i * gap + gap / 2
+                val played = (i + 0.5f) / n <= frac
+                drawLine(if (played) scheme.primary else scheme.onSecondaryContainer.copy(alpha = 0.35f), androidx.compose.ui.geometry.Offset(x, (size.height - h) / 2), androidx.compose.ui.geometry.Offset(x, (size.height + h) / 2), bar, androidx.compose.ui.graphics.StrokeCap.Round)
+            }
+        }
+        Spacer(Modifier.width(10.dp))
+        val shown = if (playing || pos > 0) pos else dur
+        Text("%d:%02d".format(shown / 60000, shown / 1000 % 60), style = MaterialTheme.typography.labelMedium, color = scheme.onSecondaryContainer, modifier = Modifier.padding(end = 8.dp))
+    }
+}
+
 @Composable
 fun AudioAttachment(url: String, name: String) {
     val ctx = LocalContext.current

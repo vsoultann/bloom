@@ -41,9 +41,9 @@ fun SignedInShell(vm: AppViewModel) {
 }
 
 // Root's design tokens: 150 / 200 / 300 ms eased transitions, no bounce.
-private fun <T> rootFast() = tween<T>(150, easing = FastOutSlowInEasing)
-private fun <T> rootNormal() = tween<T>(200, easing = FastOutSlowInEasing)
-private fun <T> rootSlow() = tween<T>(300, easing = FastOutSlowInEasing)
+private fun <T> rootFast() : androidx.compose.animation.core.FiniteAnimationSpec<T> = app.bloom.ui.theme.Motion.tween(150)
+private fun <T> rootNormal() : androidx.compose.animation.core.FiniteAnimationSpec<T> = app.bloom.ui.theme.Motion.tween(200)
+private fun <T> rootSlow() : androidx.compose.animation.core.FiniteAnimationSpec<T> = app.bloom.ui.theme.Motion.tween(300)
 
 /** Bottom navigation bar shared by the Discord- and Root-style shells. */
 @Composable
@@ -135,6 +135,8 @@ fun RootShell(vm: AppViewModel) {
                 2 -> when (vm.screen) {
                     Screen.EditProfile -> EditProfileScreen(vm, onBack = { vm.screen = Screen.Settings })
                     Screen.Customize -> app.bloom.ui.custom.CustomizeScreen(vm, onBack = { vm.screen = Screen.Settings })
+                    Screen.You -> app.bloom.ui.custom.YouScreen(vm, onBack = { vm.screen = Screen.Chat })
+                    is Screen.ServerRoles -> RolesScreen(vm, (vm.screen as Screen.ServerRoles).serverId, onBack = { vm.screen = Screen.Chat })
                     Screen.Notifications -> MentionsPage(vm) { vm.screen = Screen.Chat }
                     else -> SettingsScreen(vm, onBack = { vm.screen = Screen.Chat })
                 }

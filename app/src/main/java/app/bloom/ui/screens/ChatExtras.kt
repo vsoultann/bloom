@@ -79,7 +79,7 @@ fun OutgoingMediaRow(vm: AppViewModel, o: AppViewModel.Outgoing) {
     val scheme = MaterialTheme.colorScheme
     val me = vm.me ?: return
     val shimmer by rememberInfiniteTransition(label = "sk").animateFloat(0.25f, 0.6f, infiniteRepeatable(tween(900), RepeatMode.Reverse), label = "a")
-    val progress by animateFloatAsState(o.progress, tween(250), label = "p")
+    val progress by animateFloatAsState(o.progress, app.bloom.ui.theme.Motion.tween(250), label = "p")
     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp)) {
         Avatar(me.displayName, me.hue, 40.dp, userId = me.id)
         Spacer(Modifier.width(12.dp))
@@ -92,7 +92,7 @@ fun OutgoingMediaRow(vm: AppViewModel, o: AppViewModel.Outgoing) {
                     val ratio = if (p.width > 0 && p.height > 0) (p.width.toFloat() / p.height).coerceIn(0.4f, 3f) else 1f
                     val box = if (o.items.size == 1) Modifier.widthIn(max = 260.dp).heightIn(max = 320.dp).aspectRatio(ratio, matchHeightConstraintsFirst = ratio < 1f)
                         else Modifier.height(110.dp).aspectRatio(ratio)
-                    Box(box.clip(RoundedCornerShape(12.dp)).background(scheme.surfaceContainerHighest)) {
+                    Box(box.clip(app.bloom.ui.theme.Radii.tile).background(scheme.surfaceContainerHighest)) {
                         if (p.isImage || p.isVideo) AsyncImage(p.uri, null, Modifier.fillMaxSize().graphicsLayer { alpha = 0.45f }, contentScale = ContentScale.Crop)
                         Box(Modifier.fillMaxSize().background(scheme.onSurface.copy(alpha = shimmer * 0.25f)))
                     }

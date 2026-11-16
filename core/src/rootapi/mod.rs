@@ -1010,16 +1010,20 @@ impl RootBackend {
                 continue;
             }
             let url = self.asset_cache.get(&a.uri).map(|(u, _)| u.clone());
-            let kind = messages::kind_for_asset_uri(&a.uri).unwrap_or(AttachmentKind::File);
-            let name = match kind {
+            let meta = a.attachment.as_ref();
+            let mime = meta.map(|m| m.mime_type.as_str()).unwrap_or("");
+            let kind = if mime.starts_with("audio/") { AttachmentKind::Audio }
+                else { messages::kind_for_asset_uri(&a.uri).unwrap_or(AttachmentKind::File) };
+            let fallback = match kind {
                 AttachmentKind::Image => "image",
                 AttachmentKind::Video => "video",
                 AttachmentKind::Audio => "audio",
                 _ => "file",
             };
+            let name = meta.map(|m| m.file_name.clone()).filter(|n| !n.is_empty()).unwrap_or_else(|| fallback.to_string());
             let preview = self.asset_thumbs.get(&a.uri).cloned();
             let (width, height) = self.asset_dims.get(&a.uri).copied().unwrap_or((0, 0));
-            atts.push(Attachment { kind, name: name.into(), url, href: None, width, height, preview });
+            atts.push(Attachment { kind, name, url, href: None, width, height, preview });
         }
         // plain :shortcode: custom emoji from this user's servers
         let mut text = text.trim().to_string();
@@ -1674,6 +1678,92 @@ impl Backend for RootBackend {
                 }).collect();
                 out.dedup_by(|a, b| a["id"] == b["id"]);
                 Ok(json!(out))
+            }
+            // when an account was made (Root ids carry their creation time)
+            "joined" => {
+                let uid = a.get("user_id").and_then(|v| v.as_u64()).ok_or("user_id")?;
+                let (h, _) = self.ids.root(uid).ok_or("unknown user")?;
+                Ok(json!(messages::guid_time(h)))
+            }
+            // every role of a server, for the Roles page
+            "roles_all" => {
+                let sid = a.get("server_id").and_then(|v| v.as_u64()).ok_or("server_id")?;
+                let (h, l) = self.ids.root(sid).ok_or("unknown server")?;
+                let body = self.hub.raw("/root.CommunityRoleGrpcService/List", &RoleListReq { community_id: Some(CommunityUuid { high64: h, low64: l }) }.encode_to_vec()).map_err(|e| e.to_string())?;
+                let payload = grpcweb::unframe(&body).map_err(|e| e.to_string())?.0.into_iter().next().unwrap_or_default();
+                let mut roles: Vec<RoleFull> = wire::find_all(&payload, |r: &RoleFull| r.id.is_some() && !r.name.is_empty());
+                roles.sort_by(|a, b| b.position.total_cmp(&a.position));
+                let mut seen = std::collections::HashSet::new();
+                let out: Vec<serde_json::Value> = roles.iter().filter(|r| seen.insert(r.id.as_ref().map(|i| (i.high64, i.low64)))).map(|r| {
+                    let id = r.id.as_ref().unwrap();
+                    json!({ "id": dashed_guid(id.high64, id.low64), "name": r.name, "color": r.color_hex, "position": r.position,
+                            "mentionable": r.is_mentionable, "self_assignable": r.is_self_assignable, "members": r.member_count })
+                }).collect();
+                Ok(json!(out))
+            }
+            // role ids a member has in a server
+            "member_roles" => {
+                let sid = a.get("server_id").and_then(|v| v.as_u64()).ok_or("server_id")?;
+                let uid = a.get("user_id").and_then(|v| v.as_u64()).ok_or("user_id")?;
+                let (h, l) = self.ids.root(sid).ok_or("unknown server")?;
+                let (uh, ul) = self.ids.root(uid).ok_or("unknown user")?;
+                let req = MemberRoleListReq { community_id: Some(CommunityUuid { high64: h, low64: l }), user_id: Some(UserUuid { high64: uh, low64: ul }) };
+                let body = self.hub.raw("/root.CommunityMemberRoleGrpcService/List", &req.encode_to_vec()).map_err(|e| e.to_string())?;
+                let payload = grpcweb::unframe(&body).map_err(|e| e.to_string())?.0.into_iter().next().unwrap_or_default();
+                let r = MemberRoleListResp::decode(payload.as_slice()).unwrap_or_default();
+                Ok(json!(r.community_role_ids.iter().map(|i| dashed_guid(i.high64, i.low64)).collect::<Vec<_>>()))
+            }
+            "role_create" => {
+                let sid = a.get("server_id").and_then(|v| v.as_u64()).ok_or("server_id")?;
+                let (h, l) = self.ids.root(sid).ok_or("unknown server")?;
+                let name = a.get("name").and_then(|v| v.as_str()).unwrap_or("new role").to_string();
+                let color = a.get("color").and_then(|v| v.as_str()).map(|c| StringValue { value: c.to_string() });
+                let req = RoleCreateReq { context: Some(context()), community_id: Some(CommunityUuid { high64: h, low64: l }), name, color_hex: color, is_mentionable: a.get("mentionable").and_then(|v| v.as_bool()).unwrap_or(false) };
+                self.hub.raw("/root.CommunityRoleGrpcService/Create", &req.encode_to_vec()).map_err(|e| e.to_string())?;
+                Ok(json!(true))
+            }
+            "role_edit" => {
+                // Edit replaces everything, so start from the role exactly as Root has it
+                // (permissions passed back byte-for-byte) and change only what was asked.
+                let sid = a.get("server_id").and_then(|v| v.as_u64()).ok_or("server_id")?;
+                let rid = a.get("role_id").and_then(|v| v.as_str()).and_then(parse_guid).ok_or("role_id")?;
+                let (h, l) = self.ids.root(sid).ok_or("unknown server")?;
+                let body = self.hub.raw("/root.CommunityRoleGrpcService/List", &RoleListReq { community_id: Some(CommunityUuid { high64: h, low64: l }) }.encode_to_vec()).map_err(|e| e.to_string())?;
+                let payload = grpcweb::unframe(&body).map_err(|e| e.to_string())?.0.into_iter().next().unwrap_or_default();
+                let roles: Vec<RoleFull> = wire::find_all(&payload, |r: &RoleFull| r.id.is_some() && !r.name.is_empty());
+                let cur = roles.into_iter().find(|r| r.id.as_ref().is_some_and(|i| (i.high64, i.low64) == rid)).ok_or("role not found")?;
+                let req = RoleEditReq {
+                    context: Some(context()),
+                    community_id: Some(CommunityUuid { high64: h, low64: l }),
+                    id: cur.id.clone(),
+                    name: a.get("name").and_then(|v| v.as_str()).map(str::to_string).unwrap_or(cur.name.clone()),
+                    color_hex: a.get("color").and_then(|v| v.as_str()).map(str::to_string).unwrap_or(cur.color_hex.clone()),
+                    community_permission: cur.community_permission.clone(),
+                    channel_permission: cur.channel_permission.clone(),
+                    is_mentionable: a.get("mentionable").and_then(|v| v.as_bool()).unwrap_or(cur.is_mentionable),
+                    is_self_assignable: a.get("self_assignable").and_then(|v| v.as_bool()).unwrap_or(cur.is_self_assignable),
+                };
+                self.hub.raw("/root.CommunityRoleGrpcService/Edit", &req.encode_to_vec()).map_err(|e| e.to_string())?;
+                Ok(json!(true))
+            }
+            "role_delete" => {
+                let sid = a.get("server_id").and_then(|v| v.as_u64()).ok_or("server_id")?;
+                let rid = a.get("role_id").and_then(|v| v.as_str()).and_then(parse_guid).ok_or("role_id")?;
+                let (h, l) = self.ids.root(sid).ok_or("unknown server")?;
+                let req = RoleDeleteReq { context: Some(context()), community_id: Some(CommunityUuid { high64: h, low64: l }), id: Some(CommunityRoleUuid { high64: rid.0, low64: rid.1 }) };
+                self.hub.raw("/root.CommunityRoleGrpcService/Delete", &req.encode_to_vec()).map_err(|e| e.to_string())?;
+                Ok(json!(true))
+            }
+            "member_role_add" | "member_role_remove" => {
+                let sid = a.get("server_id").and_then(|v| v.as_u64()).ok_or("server_id")?;
+                let uid = a.get("user_id").and_then(|v| v.as_u64()).ok_or("user_id")?;
+                let rid = a.get("role_id").and_then(|v| v.as_str()).and_then(parse_guid).ok_or("role_id")?;
+                let (h, l) = self.ids.root(sid).ok_or("unknown server")?;
+                let (uh, ul) = self.ids.root(uid).ok_or("unknown user")?;
+                let req = MemberRoleChangeReq { context: Some(context()), community_id: Some(CommunityUuid { high64: h, low64: l }), community_role_id: Some(CommunityRoleUuid { high64: rid.0, low64: rid.1 }), user_ids: vec![UserUuid { high64: uh, low64: ul }] };
+                let path = if op == "member_role_add" { "/root.CommunityMemberRoleGrpcService/Add" } else { "/root.CommunityMemberRoleGrpcService/Remove" };
+                self.hub.raw(path, &req.encode_to_vec()).map_err(|e| e.to_string())?;
+                Ok(json!(true))
             }
             "upload_target" => Ok(json!({ "url": format!("{}/asset/upload", self.hub.base), "token": self.hub.token.clone().unwrap_or_default() })),
             "notifications" => {
@@ -2408,4 +2498,102 @@ mod mention_tests {
         assert_eq!(super::dashed_guid(0x00318e1df7f98201, 0x8d29dd78b5f49753), "00318e1d-f7f9-8201-8d29-dd78b5f49753");
         assert_eq!(super::parse_guid("00318e1d-f7f9-8201-8d29-dd78b5f49753"), Some((0x00318e1df7f98201, 0x8d29dd78b5f49753)));
     }
+}
+
+/// A role as Root lists it; the permission messages are kept as raw bytes so an edit
+/// can send them back unchanged.
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct RoleFull {
+    #[prost(message, optional, tag = "10")]
+    id: Option<CommunityRoleUuid>,
+    #[prost(bytes = "vec", optional, tag = "11")]
+    channel_permission: Option<Vec<u8>>,
+    #[prost(bytes = "vec", optional, tag = "12")]
+    community_permission: Option<Vec<u8>>,
+    #[prost(string, tag = "13")]
+    name: String,
+    #[prost(string, tag = "14")]
+    color_hex: String,
+    #[prost(float, tag = "15")]
+    position: f32,
+    #[prost(bool, tag = "16")]
+    is_mentionable: bool,
+    #[prost(bool, tag = "17")]
+    is_self_assignable: bool,
+    #[prost(int32, tag = "18")]
+    member_count: i32,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct RoleCreateReq {
+    #[prost(message, optional, tag = "1")]
+    context: Option<RootContext>,
+    #[prost(message, optional, tag = "10")]
+    community_id: Option<CommunityUuid>,
+    #[prost(string, tag = "11")]
+    name: String,
+    #[prost(message, optional, tag = "12")]
+    color_hex: Option<StringValue>,
+    #[prost(bool, tag = "17")]
+    is_mentionable: bool,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct RoleEditReq {
+    #[prost(message, optional, tag = "1")]
+    context: Option<RootContext>,
+    #[prost(message, optional, tag = "10")]
+    community_id: Option<CommunityUuid>,
+    #[prost(message, optional, tag = "11")]
+    id: Option<CommunityRoleUuid>,
+    #[prost(string, tag = "13")]
+    name: String,
+    #[prost(string, tag = "14")]
+    color_hex: String,
+    #[prost(bytes = "vec", optional, tag = "15")]
+    community_permission: Option<Vec<u8>>,
+    #[prost(bytes = "vec", optional, tag = "16")]
+    channel_permission: Option<Vec<u8>>,
+    #[prost(bool, tag = "17")]
+    is_mentionable: bool,
+    #[prost(bool, tag = "18")]
+    is_self_assignable: bool,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct RoleDeleteReq {
+    #[prost(message, optional, tag = "1")]
+    context: Option<RootContext>,
+    #[prost(message, optional, tag = "10")]
+    community_id: Option<CommunityUuid>,
+    #[prost(message, optional, tag = "11")]
+    id: Option<CommunityRoleUuid>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct MemberRoleListReq {
+    #[prost(message, optional, tag = "10")]
+    community_id: Option<CommunityUuid>,
+    #[prost(message, optional, tag = "11")]
+    user_id: Option<UserUuid>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct MemberRoleListResp {
+    #[prost(message, optional, tag = "10")]
+    user_id: Option<UserUuid>,
+    #[prost(message, repeated, tag = "11")]
+    community_role_ids: Vec<CommunityRoleUuid>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct MemberRoleChangeReq {
+    #[prost(message, optional, tag = "1")]
+    context: Option<RootContext>,
+    #[prost(message, optional, tag = "10")]
+    community_id: Option<CommunityUuid>,
+    #[prost(message, optional, tag = "11")]
+    community_role_id: Option<CommunityRoleUuid>,
+    #[prost(message, repeated, tag = "12")]
+    user_ids: Vec<UserUuid>,
 }

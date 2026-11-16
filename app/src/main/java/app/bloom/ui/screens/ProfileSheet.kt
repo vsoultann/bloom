@@ -30,6 +30,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.unit.dp
 import app.bloom.AppViewModel
 import app.bloom.core.Mutuals
@@ -58,9 +60,10 @@ fun ProfileSheet(vm: AppViewModel) {
     BackHandler(open) { vm.closeProfile() }
 
     val scrim by animateFloatAsState(if (open) 0.45f else 0f, Motion.effects(), label = "scrim")
-    if (scrim > 0.001f) {
+    val scrimOn by remember { androidx.compose.runtime.derivedStateOf { scrim > 0.001f } }
+    if (scrimOn) {
         Box(
-            Modifier.fillMaxSize().background(Color.Black.copy(alpha = scrim))
+            Modifier.fillMaxSize().drawBehind { drawRect(Color.Black.copy(alpha = scrim)) }
                 .clickable(remember { MutableInteractionSource() }, null) { vm.closeProfile() },
         )
     }
@@ -79,11 +82,19 @@ fun ProfileSheet(vm: AppViewModel) {
         ) {
             val u = shown ?: return@AnimatedVisibility
             Surface(
-                shape = RoundedCornerShape(topStart = 36.dp, topEnd = 36.dp),
+                shape = app.bloom.ui.theme.Radii.sheet,
                 color = MaterialTheme.colorScheme.surfaceContainer,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(heightFrac.coerceIn(0.5f, 1f))
+                    // Height and drag are read in the layout phase, so the sheet follows your finger
+                    // without recomposing the profile. Pulling up grows it live (it used to do
+                    // nothing until you let go); pulling down slides it away.
+                    .layout { m, c ->
+                        val base = c.maxHeight * heightFrac.coerceIn(0.5f, 1f)
+                        val h = (base - drag.value.coerceAtMost(0f)).coerceAtMost(c.maxHeight.toFloat()).roundToInt()
+                        val pl = m.measure(c.copy(minHeight = h, maxHeight = h))
+                        layout(pl.width, pl.height) { pl.place(0, 0) }
+                    }
                     .offset { IntOffset(0, drag.value.coerceAtLeast(0f).roundToInt()) },
             ) {
                 Box {
@@ -155,6 +166,8 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
                 listOf("@${u.name}", u.pronouns).filter { it.isNotBlank() }.joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
             )
+            // roles in the server you're looking at
+            vm.selectedServerId?.let { sid -> if (vm.authMode == app.bloom.core.AuthMode.ROOT) MemberRolesRow(vm, sid, u.id) }
             u.nowPlaying?.let { np ->
                 Spacer(Modifier.height(10.dp))
                 Row(
@@ -177,7 +190,7 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
                 // full status, wrapping onto as many lines as it needs
                 Text(
                     u.statusText, style = MaterialTheme.typography.bodyLarge, color = scheme.onSurface,
-                    modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(scheme.surfaceContainerHigh).padding(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.clip(app.bloom.ui.theme.Radii.card).background(scheme.surfaceContainerHigh).padding(horizontal = 12.dp, vertical = 8.dp),
                 )
             }
             // relationship actions: add · accept/decline · message/call
@@ -220,7 +233,7 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Card(shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerHigh)) {
+            Card(shape = app.bloom.ui.theme.Radii.panel, colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerHigh)) {
                 Column(Modifier.padding(16.dp).fillMaxWidth()) {
                     Text("About", style = MaterialTheme.typography.labelLarge, color = scheme.primary)
                     if (u.bio.isBlank()) Text("No bio yet", style = MaterialTheme.typography.bodyLarge, color = scheme.onSurfaceVariant)
@@ -350,7 +363,7 @@ private fun Staggered(index: Int, content: @Composable () -> Unit) {
 private fun MutualRow(onClick: () -> Unit, content: @Composable RowScope.() -> Unit) {
     val src = remember { MutableInteractionSource() }
     Row(
-        Modifier.fillMaxWidth().pressScale(src, 0.97f).clip(RoundedCornerShape(20.dp))
+        Modifier.fillMaxWidth().pressScale(src, 0.97f).clip(app.bloom.ui.theme.Radii.panel)
             .background(MaterialTheme.colorScheme.surfaceContainerHigh).clickable(src, null, onClick = onClick).padding(12.dp),
         verticalAlignment = Alignment.CenterVertically, content = content,
     )
