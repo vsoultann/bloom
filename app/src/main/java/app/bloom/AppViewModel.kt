@@ -1,6 +1,7 @@
 package app.bloom
 
 import app.bloom.notify.KeepAliveService
+import androidx.compose.runtime.snapshotFlow
 import app.bloom.ui.theme.Ui
 import app.bloom.ui.custom.Fonts
 import app.bloom.ui.custom.EmojiPacks
@@ -713,6 +714,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         selectedChannelId = null
     }
 
+    init {
+        viewModelScope.launch {
+            snapshotFlow { voice.error }.collect { e -> if (e != null) { error = "Call: $e"; runCatching { Core.log("voice", e) } } }
+        }
+    }
+
     private suspend fun pollLoop() {
         while (viewModelScope.isActive) {
             delay(400)
@@ -752,6 +759,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     voice.onMember(ev.channelId, ev.member)
                 }
                 is Event.VoiceLeft -> voice.onLeft(ev.channelId, ev.userId)
+                is Event.Ring -> if (voice.channelId != ev.channelId) {
+                    if (ev.callerId !in users) runCatching { Core.users() }.getOrNull()?.let { putUsers(it) }
+                    incomingCall = IncomingCall(ev.channelId, ev.callerId, System.currentTimeMillis())
+                    if (!visible) app.bloom.notify.Notifier.ringing(getApplication(), ev.channelId, users[ev.callerId]?.displayName ?: "Someone", users[ev.callerId]?.avatarUrl)
+                }
+                is Event.RingDeclined -> if (voice.channelId == ev.channelId) error = "${users[ev.userId]?.displayName ?: "They"} declined the call"
+                Event.Unknown -> {}
                 Event.DmsChanged -> {
                     dms = runCatching { Core.dms() }.getOrDefault(dms)
                     // keep the open conversation marked read
@@ -817,6 +831,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         selectedServerId = null
         dms = dms.map { if (it.id == id) it.copy(unread = false) else it }
         openChannel(id)
+    }
+
+    // ---- calls ----
+    data class IncomingCall(val channelId: Long, val callerId: Long, val at: Long)
+    var incomingCall by mutableStateOf<IncomingCall?>(null)
+
+    fun acceptCall() {
+        val c = incomingCall ?: return
+        incomingCall = null
+        app.bloom.notify.Notifier.clear(getApplication(), c.channelId + 7_000_000)
+        openDm(c.channelId)
+        voice.join(c.channelId, users[c.callerId]?.displayName ?: "Call")
+    }
+
+    fun declineCall() {
+        val c = incomingCall ?: return
+        incomingCall = null
+        app.bloom.notify.Notifier.clear(getApplication(), c.channelId + 7_000_000)
+        viewModelScope.launch { runCatching { Core.social("ring_decline", JSONObject().put("channel", c.channelId)) } }
     }
 
     /** Opens the You page and closes the side panel so the page (and the flying avatar) is in view. */

@@ -946,6 +946,16 @@ impl RootBackend {
         self.ids.root(id).map(|(h, l)| format!("h{:02x}/{:02x}", h & 0xFF, (h >> 8) & 0xFF) + &format!(" l{:02x}", l >> 56)).unwrap_or_default()
     }
 
+    /// How many people are in a voice channel right now (Root's WebRtc List).
+    pub fn voice_count(&mut self, channel: Id) -> Option<usize> {
+        let (container, community) = self.container(channel)?;
+        let req = VoiceListReq { community_id: community, container_id: Some(container) };
+        let body = self.hub.raw("/root.WebRtcGrpcService/List", &prost::Message::encode_to_vec(&req)).ok()?;
+        let payload = grpcweb::unframe(&body).ok()?.0.into_iter().next().unwrap_or_default();
+        let r = <VoiceListResp as prost::Message>::decode(payload.as_slice()).ok()?;
+        Some(r.members.len())
+    }
+
     /// Debug: raw Resolve response for one id
     pub fn debug_resolve_raw(&mut self, id: &str) -> String {
         let Some((h, l)) = parse_guid(id) else { return "bad id".into() };
@@ -1346,6 +1356,20 @@ impl RootBackend {
             120 | 121 | 122 | 125 => {
                 self.load_dms();
                 vec![Event::DmsChanged]
+            }
+            // incoming DM / group call
+            123 => {
+                let Ok(r) = RingPacket::decode(p.body.as_slice()) else { return vec![] };
+                let (Some(dm), Some(caller)) = (r.id, r.caller_user_id) else { return vec![] };
+                let caller_id = self.ids.local(caller.high64, caller.low64);
+                if caller_id == self.me { return vec![] }
+                self.ensure_users(vec![caller_id]);
+                vec![Event::Ring { channel_id: self.ids.local(dm.high64, dm.low64), caller_id }]
+            }
+            124 => {
+                let Ok(r) = RingPacket::decode(p.body.as_slice()) else { return vec![] };
+                let (Some(dm), Some(u)) = (r.id, r.caller_user_id) else { return vec![] };
+                vec![Event::RingDeclined { channel_id: self.ids.local(dm.high64, dm.low64), user_id: self.ids.local(u.high64, u.low64) }]
             }
             _ => vec![],
         }
@@ -1777,6 +1801,13 @@ impl Backend for RootBackend {
                 }).collect();
                 out.dedup_by(|a, b| a["id"] == b["id"]);
                 Ok(json!(out))
+            }
+            "ring_decline" => {
+                let ch = a.get("channel").and_then(|v| v.as_u64()).ok_or("channel")?;
+                let (h, l) = self.ids.root(ch).ok_or("unknown chat")?;
+                let req = RingDeclineReq { context: Some(context()), id: Some(EmojiUuid { high64: h, low64: l }) };
+                self.hub.raw("/root.DirectMessageGrpcService/RingDecline", &req.encode_to_vec()).map_err(|e| e.to_string())?;
+                Ok(json!(true))
             }
             // when an account was made (Root ids carry their creation time)
             "joined" => {
@@ -2724,4 +2755,35 @@ struct MemberRoleChangeReq {
     community_role_id: Option<CommunityRoleUuid>,
     #[prost(message, repeated, tag = "12")]
     user_ids: Vec<UserUuid>,
+}
+
+/// DirectMessageRingPacket / RingDeclinedPacket share the layout: 3 = user, 4 = DM id.
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct RingPacket {
+    #[prost(message, optional, tag = "3")]
+    caller_user_id: Option<UserUuid>,
+    #[prost(message, optional, tag = "4")]
+    id: Option<EmojiUuid>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct RingDeclineReq {
+    #[prost(message, optional, tag = "1")]
+    context: Option<RootContext>,
+    #[prost(message, optional, tag = "10")]
+    id: Option<EmojiUuid>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct VoiceListReq {
+    #[prost(message, optional, tag = "10")]
+    community_id: Option<CommunityUuid>,
+    #[prost(message, optional, tag = "11")]
+    container_id: Option<MessageContainerUuid>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct VoiceListResp {
+    #[prost(bytes = "vec", repeated, tag = "11")]
+    members: Vec<Vec<u8>>,
 }

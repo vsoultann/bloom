@@ -63,7 +63,8 @@ object Core {
     suspend fun react(id: Long, emoji: String) = Message.from(raw("react", args("id" to id, "emoji" to emoji)) as JSONObject)
     suspend fun typing(channel: Long) = (raw("typing", args("channel" to channel)) as JSONObject).getBoolean("send")
     suspend fun markRead(server: Long?) { raw("mark_read", args("server" to server)) }
-    suspend fun poll() = (raw("poll") as JSONArray).map { Event.from(it) }
+    /** Live events; one we can't read is skipped on its own instead of losing the whole batch. */
+    suspend fun poll() = (raw("poll") as JSONArray).let { a -> (0 until a.length()).mapNotNull { i -> runCatching { Event.from(a.getJSONObject(i)) }.getOrNull() } }
     suspend fun mutuals(user: Long) = Mutuals.from(raw("mutuals", args("user" to user)) as JSONObject)
 
     suspend fun upload(path: String, name: String, mime: String) = raw("upload", args("path" to path, "name" to name, "mime" to mime)) as String

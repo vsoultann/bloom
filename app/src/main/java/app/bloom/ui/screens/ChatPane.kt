@@ -198,7 +198,9 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
         ChatBackground(vm, Modifier.hazeSource(haze, zIndex = 0f))
         // voice channels, and DMs while you're in a call there, show the call stage on top
         val isVoice = channel?.kind == ChannelKind.VOICE || (vm.selectedServerId == null && channel != null && vm.voice.channelId == channel.id)
-        val topPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp + if (isVoice) 236.dp else 0.dp
+        // the call stage resizes (and tucks away); messages start right under it
+        var stageHeight by remember { mutableStateOf(0.dp) }
+        val topPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp + if (isVoice) stageHeight else 0.dp
         if (channel?.kind == ChannelKind.APP) {
             val ctx = androidx.compose.ui.platform.LocalContext.current
             Box(Modifier.fillMaxSize().padding(32.dp), contentAlignment = Alignment.Center) {
@@ -289,7 +291,8 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
         }
 
         TopBar(vm, haze, onMenu, Modifier.align(Alignment.TopCenter))
-        if (isVoice && channel != null) VoiceStage(vm, channel, Modifier.align(Alignment.TopCenter).padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp))
+        if (isVoice && channel != null) CallStage(vm, channel, isDm = vm.selectedServerId == null, modifier = Modifier.align(Alignment.TopCenter).padding(top = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp)
+            .onSizeChanged { with(density) { stageHeight = it.height.toDp() } })
         if (channel?.kind == ChannelKind.TEXT || channel?.kind == ChannelKind.ANNOUNCEMENT || isVoice || vm.selectedServerId == null) Composer(
             vm, haze,
             Modifier.align(Alignment.BottomCenter).onSizeChanged { with(density) { composerHeight = it.height.toDp() } },

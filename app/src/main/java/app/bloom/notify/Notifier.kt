@@ -109,6 +109,33 @@ object Notifier {
         runCatching { NotificationManagerCompat.from(ctx).notify(it.channelId.toInt(), n) }
     }
 
+    /** "X is calling" while Bloom is in the background; tapping it opens the call card. */
+    suspend fun ringing(ctx: Context, channelId: Long, caller: String, avatarUrl: String?) {
+        if (!allowed(ctx)) return
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        nm.createNotificationChannel(NotificationChannel("calls", "Incoming calls", NotificationManager.IMPORTANCE_HIGH).apply {
+            setSound(android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_RINGTONE),
+                android.media.AudioAttributes.Builder().setUsage(android.media.AudioAttributes.USAGE_NOTIFICATION_RINGTONE).build())
+            enableVibration(true)
+        })
+        val open = Intent(ctx, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            putExtra(EXTRA_CHANNEL, channelId)
+        }
+        val pi = PendingIntent.getActivity(ctx, 9000 + channelId.toInt(), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+        val icon = avatar(ctx, avatarUrl)?.let { IconCompat.createWithBitmap(circle(it)) }
+        val person = Person.Builder().setName(caller).apply { icon?.let { setIcon(it) } }.build()
+        val n = NotificationCompat.Builder(ctx, "calls")
+            .setSmallIcon(android.R.drawable.stat_sys_phone_call)
+            .setStyle(NotificationCompat.CallStyle.forIncomingCall(person, pi, pi))
+            .setContentTitle(caller).setContentText("is calling you")
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setContentIntent(pi).setAutoCancel(true).setTimeoutAfter(35_000)
+            .build()
+        runCatching { NotificationManagerCompat.from(ctx).notify((channelId + 7_000_000).toInt(), n) }
+    }
+
     /** Clear a chat's notification once you open it. */
     fun clear(ctx: Context, channelId: Long) = runCatching { NotificationManagerCompat.from(ctx).cancel(channelId.toInt()) }
 

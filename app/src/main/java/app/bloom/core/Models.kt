@@ -190,6 +190,9 @@ sealed interface Event {
     data object DmsChanged : Event
     data class Voice(val channelId: Long, val member: JSONObject) : Event
     data class VoiceLeft(val channelId: Long, val userId: Long) : Event
+    data class Ring(val channelId: Long, val callerId: Long) : Event
+    data class RingDeclined(val channelId: Long, val userId: Long) : Event
+    data object Unknown : Event
 
     companion object {
         fun from(o: JSONObject): Event = when (o.getString("type")) {
@@ -200,7 +203,12 @@ sealed interface Event {
             "dms" -> DmsChanged
             "voice" -> Voice(o.getLong("channel_id"), o.getJSONObject("member"))
             "voice_left" -> VoiceLeft(o.getLong("channel_id"), o.getLong("user_id"))
-            else -> Typing(o.getLong("channel_id"), o.getLong("user_id"))
+            "ring" -> Ring(o.getLong("channel_id"), o.getLong("caller_id"))
+            "ring_declined" -> RingDeclined(o.getLong("channel_id"), o.getLong("user_id"))
+            // only real typing events are typing; anything new is ignored instead of
+            // throwing and taking the rest of the batch down with it
+            "typing" -> Typing(o.getLong("channel_id"), o.getLong("user_id"))
+            else -> if (o.has("channel_id") && o.has("user_id") && o.length() <= 3) Typing(o.getLong("channel_id"), o.getLong("user_id")) else Unknown
         }
     }
 }

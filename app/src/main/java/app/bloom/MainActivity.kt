@@ -143,6 +143,8 @@ class MainActivity : ComponentActivity() {
                         MainScreen(vm)
                         // shared-element flights for profile pictures draw above everything
                         app.bloom.ui.motion.AvatarFlightOverlay(vm)
+                        // incoming calls ring over everything
+                        app.bloom.ui.screens.IncomingCallOverlay(vm)
                     }
                 }
             }

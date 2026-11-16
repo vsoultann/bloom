@@ -21,6 +21,10 @@ pub enum Event {
     DmsChanged,
     /// Server copy of a message we already show (e.g. our own send, now with attachments).
     Replace(Message),
+    /// Someone is calling you in a DM / group.
+    Ring { channel_id: Id, caller_id: Id },
+    /// Someone declined a call you started.
+    RingDeclined { channel_id: Id, user_id: Id },
 }
 
 pub trait Backend: Send {

@@ -143,6 +143,8 @@ impl App {
             }
             Event::Voice { channel_id, member } => json!({ "type": "voice", "channel_id": channel_id, "member": member }),
             Event::VoiceLeft { channel_id, user_id } => json!({ "type": "voice_left", "channel_id": channel_id, "user_id": user_id }),
+            Event::Ring { channel_id, caller_id } => json!({ "type": "ring", "channel_id": channel_id, "caller_id": caller_id }),
+            Event::RingDeclined { channel_id, user_id } => json!({ "type": "ring_declined", "channel_id": channel_id, "user_id": user_id }),
             Event::Reaction { id, emoji, user_id, added } => match self.backend.message_mut(id) {
                 Some(m) => {
                     match m.reactions.iter_mut().find(|r| r.emoji == emoji) {

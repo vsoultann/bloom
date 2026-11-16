@@ -52,6 +52,8 @@ class VoiceManager(private val app: Context) {
     var cameraOn by mutableStateOf(false); private set
     var screenOn by mutableStateOf(false); private set
     var error by mutableStateOf<String?>(null)
+    /** when someone else first joined (call timer starts here); null while ringing / alone */
+    var connectedAt by mutableStateOf<Long?>(null); private set
     val members = mutableStateMapOf<Long, VoiceMember>()
     /** trackId → video track, for rendering tiles. */
     val videoTracks = mutableStateMapOf<String, VideoTrack>()
@@ -128,6 +130,7 @@ class VoiceManager(private val app: Context) {
                 members.clear()
                 res.optJSONArray("members")?.let { a -> repeat(a.length()) { i -> VoiceMember.from(a.getJSONObject(i)).let { members[it.userId] = it } } }
                 members[myId] = VoiceMember(myId)
+                if (members.keys.any { it != myId }) connectedAt = System.currentTimeMillis()
 
                 // 2) publish the mic
                 publish(channel, tx.mid ?: "0", local.id(), "audio")
@@ -174,6 +177,7 @@ class VoiceManager(private val app: Context) {
 
     /** Live participant update from the hub. */
     fun onMember(channel: Long, o: JSONObject) {
+        if (channel == channelId && o.optLong("user_id") != myId && connectedAt == null) connectedAt = System.currentTimeMillis()
         if (channel != channelId) return
         val m = VoiceMember.from(o)
         members[m.userId] = m.copy(level = members[m.userId]?.level ?: 0f)
@@ -268,6 +272,7 @@ class VoiceManager(private val app: Context) {
     }
 
     private fun cleanup() {
+        connectedAt = null
         statsJob?.cancel()
         runCatching { camCapturer?.stopCapture() }; camCapturer?.dispose(); camCapturer = null
         runCatching { screenCapturer?.stopCapture() }; screenCapturer?.dispose(); screenCapturer = null

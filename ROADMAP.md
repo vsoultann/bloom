@@ -240,6 +240,14 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [x] Released v0.3.3
 - [~] Panels slide down out of frame when closing (and up from below when opening) instead of squashing — v0.3.4
 
+## 23. Calls (2026-11-16)
+- [x] Incoming calls: Root's ring packet (123) and "declined" (124) were ignored — now an incoming-call card (ripples, ringtone, vibration, Accept / Decline via DirectMessageGrpcService/RingDecline), call-style notification when Bloom is in the background
+- [x] Unknown live events were parsed as "typing", threw, and dropped the whole batch — now parsed one by one, unknown ones ignored
+- [x] Call errors were never shown or logged — now a toast and the diagnostics log
+- [~] New call stage: live status (connecting / ringing with ripples / timer), living-shape participants that swell with their voice, frosted dock of morphing buttons, tuck-away bar; chat padding follows its height
+- [ ] Live call test (joining an empty voice channel) — not run yet: phone was in use
+- [ ] Now playing: Root rejects the status with error 300 (too long with the hidden part) — needs a shorter encoding / budget
+
 ## Known bugs to check
 - [ ] Password field possibly cleared after tapping the eye (seen twice while the user was also using the phone)
 - [ ] Tapping a channel once opened a message author's profile instead
