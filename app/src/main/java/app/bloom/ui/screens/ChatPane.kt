@@ -41,6 +41,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.layout.layout
+import kotlinx.coroutines.flow.first
 import androidx.compose.ui.unit.em
 import androidx.compose.foundation.border
 import androidx.compose.animation.shrinkHorizontally
@@ -152,8 +154,11 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
 
     // after the whole list is swapped (cached → fresh), items jump into place instead of
     // gliding from their old spots — gliding everything at once made messages overlap
-    var settled by remember { mutableStateOf(true) }
-    LaunchedEffect(vm.listEpoch) { settled = false; kotlinx.coroutines.delay(700); settled = true }
+    // decided in the same frame as the swap (a LaunchedEffect would be one frame late and
+    // let leaving messages fade out over the new ones — the "ghost" overlap)
+    var settledEpoch by remember { mutableIntStateOf(vm.listEpoch) }
+    val settled = settledEpoch == vm.listEpoch
+    LaunchedEffect(vm.listEpoch) { kotlinx.coroutines.delay(700); settledEpoch = vm.listEpoch }
 
     // opening a chat always starts at the newest message
     LaunchedEffect(vm.selectedChannelId) { listState.scrollToItem(0) }
@@ -176,9 +181,12 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
             .collect { (last, size, loading) -> if (!loading && size > 0 && last >= size - 10) vm.loadOlder() }
     }
 
-    // Stick to bottom when a new message arrives and we're already at the bottom.
-    LaunchedEffect(msgs.size) {
-        if (listState.firstVisibleItemIndex <= 2) listState.animateScrollToItem(0)
+    // Stick to bottom when a NEW message arrives and you're already at the bottom. Keyed on
+    // the newest message (not the count): loading older history changes the count too, and
+    // that used to yank the list mid-drag. Never while your finger is on the list.
+    val newestId = msgs.lastOrNull()?.id
+    LaunchedEffect(newestId) {
+        if (newestId != null && listState.firstVisibleItemIndex <= 1 && !listState.isScrollInProgress) listState.animateScrollToItem(0)
     }
 
     // The chat slides over the server/channel layer, so it must be opaque.
@@ -231,7 +239,7 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
                     // a new day starts here (or this is the very first message)
                     val newDay = if (prev == null) vm.noMoreHistory else !sameDay(prev.ts, m.ts)
                     val grouped = !newDay && prev != null && prev.authorId == m.authorId && m.ts - prev.ts < 300 && m.replyTo == null
-                    if (newDay) Column(Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = Motion.effects())) {
+                    if (newDay) Column(Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = if (settled) Motion.effects() else null)) {
                         DateDivider(m.ts)
                         MessageRow(
                             vm, m, grouped, reversed, Modifier,
@@ -244,7 +252,7 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
                     } else MessageRow(
                         vm, m, grouped, reversed,
                         // existing messages glide (no bounce) as new ones arrive; the entrance itself is in MessageBody
-                        Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = Motion.effects()),
+                        Modifier.animateItem(fadeInSpec = null, placementSpec = glide, fadeOutSpec = if (settled) Motion.effects() else null),
                         onJump = { rid ->
                             val idx = reversed.indexOfFirst { it.id == rid }
                             if (idx >= 0) jumpScope.launch { listState.animateScrollToItem(idx, -200); vm.flash(rid) }
@@ -672,6 +680,35 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
     var text by remember { mutableStateOf("") }
     var panel by remember { mutableStateOf(ComposerPanel.NONE) }
     BackHandler(panel != ComposerPanel.NONE) { panel = ComposerPanel.NONE }
+    // ---- keyboard ⇄ panel without any jump (the Telegram/WhatsApp way) ----
+    // Panels take exactly the keyboard's height. The space under the input row is always
+    // max(keyboard, panel), so swapping one for the other never moves the composer.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    // the inset objects only; their values are read in layout / flows, never in composition,
+    // so the keyboard sliding doesn't recompose the composer every frame
+    val imeInsets = WindowInsets.ime
+    val navInsets = WindowInsets.navigationBars
+    fun kbOverNav() = (imeInsets.getBottom(density) - navInsets.getBottom(density)).coerceAtLeast(0)
+    LaunchedEffect(Unit) {
+        snapshotFlow { kbOverNav() }.collect { k -> if (k > with(density) { 160.dp.toPx() } && k > vm.keyboardHeightPx) vm.keyboardHeightPx = k }
+    }
+    val kbHeightPx = if (vm.keyboardHeightPx > 0) vm.keyboardHeightPx else with(density) { 300.dp.roundToPx() }
+    val panelArea = remember { androidx.compose.animation.core.Animatable(0f) }
+    var awaitingKeyboard by remember { mutableStateOf(false) }
+    LaunchedEffect(panel) {
+        val target = if (panel != ComposerPanel.NONE) kbHeightPx.toFloat() else 0f
+        val k = kbOverNav()
+        // if the keyboard is (still) covering that space, swap instantly: nothing visibly moves
+        if (target > 0f && k > target * 0.5f || target == 0f && k > panelArea.value * 0.9f) panelArea.snapTo(target)
+        else panelArea.animateTo(target, androidx.compose.animation.core.spring(dampingRatio = 1f, stiffness = 520f))
+    }
+    // panel → keyboard: keep the panel until the keyboard has fully risen, then let it go
+    LaunchedEffect(awaitingKeyboard) {
+        if (!awaitingKeyboard) return@LaunchedEffect
+        snapshotFlow { kbOverNav() }.first { it >= kbHeightPx * 0.92f }
+        panel = ComposerPanel.NONE; awaitingKeyboard = false
+    }
+    LaunchedEffect(awaitingKeyboard) { if (awaitingKeyboard) { delay(700); if (awaitingKeyboard) { panel = ComposerPanel.NONE; awaitingKeyboard = false } } }
     val scheme = MaterialTheme.colorScheme
     val editing = vm.editing
     val replying = vm.replyingTo
@@ -691,9 +728,13 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
         modifier
             .fillMaxWidth()
             .padding(horizontal = 10.dp)
-            .navigationBarsPadding()
-            .imePadding()
-            .padding(bottom = 8.dp)
+            // nav bar + whatever part of the keyboard the panel isn't already covering
+            // (computed during layout, so the keyboard's slide only re-lays out, never recomposes)
+            .layout { measurable, constraints ->
+                val bottom = navInsets.getBottom(this) + (kbOverNav() - panelArea.value).coerceAtLeast(0f).toInt() + 8.dp.roundToPx()
+                val p = measurable.measure(constraints.copy(maxHeight = (constraints.maxHeight - bottom).coerceAtLeast(0), minHeight = 0))
+                layout(p.width, p.height + bottom) { p.place(0, 0) }
+            }
             .clip(RoundedCornerShape(if (LocalLook.current.look == app.bloom.ui.theme.Look.DISCORD) 24.dp else 28.dp))
             // no animateContentSize here: every child below already animates its own size,
             // and animating the parent too made the composer lag behind and wobble
@@ -728,9 +769,15 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
         val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
         val fieldFocus = remember { androidx.compose.ui.focus.FocusRequester() }
         fun toggle(p: ComposerPanel) {
-            panel = if (panel == p) ComposerPanel.NONE else p
-            if (panel != ComposerPanel.NONE) { keyboard?.hide(); focus.clearFocus() }
-            else { runCatching { fieldFocus.requestFocus() }; keyboard?.show() } // back to typing
+            if (panel == p) {
+                // back to typing: the panel waits for the keyboard to arrive before leaving
+                awaitingKeyboard = true
+                runCatching { fieldFocus.requestFocus() }; keyboard?.show()
+            } else {
+                awaitingKeyboard = false
+                panel = p
+                keyboard?.hide(); focus.clearFocus()
+            }
         }
         // ---- @mentions: suggestions while typing "@…" ----
         val picked = remember { mutableStateMapOf<String, String>() } // "@Name" → token for the core
@@ -801,7 +848,7 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
                 maxLines = 6,
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 12.dp)
                     .focusRequester(fieldFocus)
-                    .onFocusChanged { if (it.isFocused) panel = ComposerPanel.NONE },
+                    .onFocusChanged { if (it.isFocused && panel != ComposerPanel.NONE) awaitingKeyboard = true },
                 decorationBox = { inner ->
                     if (text.isEmpty()) Text("Message ${if (vm.selectedServerId == null) "@" else "#"}${vm.selectedChannel?.name ?: ""}", color = scheme.onSurfaceVariant, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     if (hasCustom) {
@@ -862,11 +909,18 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
                 }
             }
         }
+        // the panel lives in exactly the keyboard's space; switching panels just cross-fades
         AnimatedContent(
             panel,
-            // panels get a solid background so chat text never shows through the buttons
-            modifier = Modifier.background(if (panel == ComposerPanel.NONE) Color.Transparent else scheme.surfaceContainerHigh),
-            transitionSpec = { (expandVertically(Motion.spatial()) + fadeIn(Motion.effects())) togetherWith (shrinkVertically(Motion.spatial()) + fadeOut(Motion.effects())) },
+            modifier = Modifier.fillMaxWidth()
+                .layout { measurable, constraints ->
+                    val h = panelArea.value.toInt()
+                    val p = measurable.measure(constraints.copy(minHeight = h, maxHeight = h))
+                    layout(p.width, h) { p.place(0, 0) }
+                }
+                .drawBehind { if (panelArea.value >= 1f) drawRect(scheme.surfaceContainerHigh) },
+            transitionSpec = { fadeIn(androidx.compose.animation.core.tween(180)) togetherWith fadeOut(androidx.compose.animation.core.tween(120)) },
+            contentAlignment = Alignment.TopCenter,
             label = "panel",
         ) { p ->
             when (p) {

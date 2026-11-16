@@ -787,6 +787,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var channelOpens by mutableStateOf(0); private set
 
     var noMoreHistory by mutableStateOf(false); private set
+    /** the keyboard's height (px above the nav bar), learned once it's been open; panels match it */
+    var keyboardHeightPx by mutableIntStateOf(0)
     /** bumped when the whole message list is replaced (no move animations for that swap) */
     var listEpoch by mutableIntStateOf(0); private set
     var loadingOlder by mutableStateOf(false); private set
@@ -844,9 +846,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // Real backends fetch author profiles alongside messages.
             runCatching { Core.users() }.getOrNull()?.let { putUsers(it) }
             if (selectedChannelId == id && (list.isNotEmpty() || messages.isEmpty())) {
-                listEpoch++
-                messages.clear()
-                messages.addAll(list)
+                // keep older history that's already on screen (from the saved copy) instead of
+                // dropping it — dropped items made the list jump and ghost while they faded
+                val oldestFresh = list.minOfOrNull { it.ts }
+                val keep = if (oldestFresh == null) emptyList() else messages.filter { it.ts < oldestFresh && list.none { f -> f.id == it.id } }
+                val merged = (keep + list).sortedBy { it.ts }.distinctBy { it.id }
+                if (merged.map { it.id } != messages.map { it.id }) {
+                    listEpoch++
+                    messages.clear()
+                    messages.addAll(merged)
+                } else {
+                    // same messages: update in place (edits, reactions) without a swap
+                    merged.forEachIndexed { i, m -> if (messages[i] != m) messages[i] = m }
+                }
             }
             // a short first page (deleted messages count against it) doesn't prove we're at
             // the start: ask for one more page; the core only answers empty at the real start
