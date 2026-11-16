@@ -836,13 +836,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     // ---- calls ----
     data class IncomingCall(val channelId: Long, val callerId: Long, val at: Long)
     var incomingCall by mutableStateOf<IncomingCall?>(null)
+    /** the call is shown full screen (otherwise as the floating pill) */
+    var callExpanded by mutableStateOf(false)
+
+    /** Start (or join) a call and show it full screen. */
+    fun startCall(channelId: Long, title: String) { callExpanded = true; voice.join(channelId, title) }
 
     fun acceptCall() {
         val c = incomingCall ?: return
         incomingCall = null
         app.bloom.notify.Notifier.clear(getApplication(), c.channelId + 7_000_000)
         openDm(c.channelId)
-        voice.join(c.channelId, users[c.callerId]?.displayName ?: "Call")
+        startCall(c.channelId, users[c.callerId]?.displayName ?: "Call")
     }
 
     fun declineCall() {

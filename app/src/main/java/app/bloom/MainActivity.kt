@@ -143,6 +143,15 @@ class MainActivity : ComponentActivity() {
                         MainScreen(vm)
                         // shared-element flights for profile pictures draw above everything
                         app.bloom.ui.motion.AvatarFlightOverlay(vm)
+                        // the call: full screen when open, a floating pill otherwise
+                        androidx.compose.animation.AnimatedVisibility(
+                            vm.callExpanded && vm.voice.channelId != null,
+                            enter = androidx.compose.animation.slideInVertically(androidx.compose.animation.core.spring(0.9f, 380f)) { it } + androidx.compose.animation.fadeIn(),
+                            exit = androidx.compose.animation.slideOutVertically(androidx.compose.animation.core.spring(1f, 450f)) { it } + androidx.compose.animation.fadeOut(),
+                        ) { app.bloom.ui.screens.CallScreen(vm) }
+                        androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.TopCenter) {
+                            app.bloom.ui.screens.CallPill(vm)
+                        }
                         // incoming calls ring over everything
                         app.bloom.ui.screens.IncomingCallOverlay(vm)
                     }

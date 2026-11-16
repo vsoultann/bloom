@@ -245,6 +245,8 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [x] Unknown live events were parsed as "typing", threw, and dropped the whole batch — now parsed one by one, unknown ones ignored
 - [x] Call errors were never shown or logged — now a toast and the diagnostics log
 - [~] New call stage: live status (connecting / ringing with ripples / timer), living-shape participants that swell with their voice, frosted dock of morphing buttons, tuck-away bar; chat padding follows its height
+- [~] Full-screen call view (blurred drifting backdrop of the other person, big living-shape portrait or group grid, your own preview tile, labelled glass dock) + floating call pill anywhere in the app; old in-chat stage now only the pre-join card
+- [x] Step-by-step call trace in Logs & crashes (join, ICE servers, session, mic, subscriptions, ICE/connection states, failures)
 - [ ] Live call test (joining an empty voice channel) — not run yet: phone was in use
 - [ ] Now playing: Root rejects the status with error 300 (too long with the hidden part) — needs a shorter encoding / budget
 

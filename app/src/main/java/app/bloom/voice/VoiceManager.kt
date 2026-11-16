@@ -93,7 +93,11 @@ class VoiceManager(private val app: Context) {
     var needsMic by mutableStateOf<Pair<Long, String>?>(null)
     fun retryJoin() { needsMic?.let { (c, t) -> needsMic = null; join(c, t) } }
 
+    /** Step-by-step call trace in Settings → Logs & crashes (so a failed call says where). */
+    private fun trace(step: String) { scope.launch { runCatching { Core.log("call", step) } }; android.util.Log.i("BloomCall", step) }
+
     fun join(channel: Long, title: String) {
+        trace("join requested ($channel) · in=$channelId connecting=$connecting")
         if (channelId == channel || connecting) return
         if (app.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {
             needsMic = channel to title
@@ -106,6 +110,7 @@ class VoiceManager(private val app: Context) {
             runCatching {
                 VoiceService.start(app, title)
                 val ice = Core.voice("ice") as JSONObject
+                trace("ice servers: ${ice.optJSONArray("urls")?.length() ?: 0}")
                 val urls = ice.getJSONArray("urls").let { a -> List(a.length()) { a.getString(it) } }
                 val servers = listOf(PeerConnection.IceServer.builder(urls).setUsername(ice.optString("username")).setPassword(ice.optString("credential")).createIceServer())
                 val cfg = PeerConnection.RTCConfiguration(servers).apply {
@@ -124,7 +129,9 @@ class VoiceManager(private val app: Context) {
                 // 1) session
                 val offer = conn.offer()
                 conn.setLocal(offer)
+                trace("offer ready (${offer.description.length} chars), creating session")
                 val res = Core.voice("join", JSONObject().put("channel", channel).put("sdp", offer.description).put("sdp_type", "offer")) as JSONObject
+                trace("session: answer=${res.optString("sdp").length} chars, id=${res.optString("session_id").take(8)}…, members=${res.optJSONArray("members")?.length() ?: 0}")
                 res.optString("sdp").takeIf { it.isNotEmpty() && it != "null" }?.let { conn.setRemote(SessionDescription(SessionDescription.Type.ANSWER, it)) }
                 channelId = channel
                 members.clear()
@@ -134,10 +141,13 @@ class VoiceManager(private val app: Context) {
 
                 // 2) publish the mic
                 publish(channel, tx.mid ?: "0", local.id(), "audio")
+                trace("mic published")
                 // 3) subscribe to everyone already here
                 subscribeAll()
                 statsJob = scope.launch { pollLevels() }
+                trace("joined · subscribed to ${subscribed.size} tracks")
             }.onFailure { e ->
+                trace("FAILED: ${e::class.simpleName}: ${e.message}")
                 error = e.message ?: "Couldn't join voice"
                 cleanup()
             }
@@ -166,6 +176,7 @@ class VoiceManager(private val app: Context) {
         val tracks = JSONArray()
         want.forEach { (id, kind, user) -> tracks.put(JSONObject().put("location", "remote").put("track_id", id).put("kind", kind)); trackToUser[id] = user }
         val r = Core.voice("tracks", JSONObject().put("channel", channel).put("tracks", tracks)) as JSONObject
+        trace("subscribe ${want.size} → ${r.optJSONArray("tracks")?.length() ?: 0} tracks, offer=${r.optString("sdp").length} chars")
         r.optJSONArray("tracks")?.let { a -> repeat(a.length()) { i -> val t = a.getJSONObject(i); if (t.optString("error").let { it.isEmpty() || it == "null" }) { midToTrack[t.getString("mid")] = t.getString("track_id"); subscribed += t.getString("track_id") } } }
         // the SFU answers with an offer containing the new remote tracks
         val sdp = r.optString("sdp").takeIf { it.isNotEmpty() && it != "null" } ?: return@withLock
@@ -327,8 +338,10 @@ class VoiceManager(private val app: Context) {
             if (track is AudioTrack) track.setEnabled(!deafened)
         }
         override fun onIceConnectionChange(s: PeerConnection.IceConnectionState) {
-            if (s == PeerConnection.IceConnectionState.FAILED) error = "Lost the voice connection"
+            trace("ice: $s")
+            if (s == PeerConnection.IceConnectionState.FAILED) error = "Couldn't connect the audio (network)"
         }
+        override fun onConnectionChange(s: PeerConnection.PeerConnectionState) { trace("connection: $s") }
         override fun onSignalingChange(s: PeerConnection.SignalingState?) {}
         override fun onIceConnectionReceivingChange(b: Boolean) {}
         override fun onIceGatheringChange(s: PeerConnection.IceGatheringState?) {}

@@ -26,6 +26,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -64,13 +65,14 @@ fun CallStage(vm: AppViewModel, channel: Channel, isDm: Boolean, modifier: Modif
     val inThis = v.channelId == channel.id
     val dm = if (isDm) vm.dms.firstOrNull { it.id == channel.id } else null
     val title = dm?.let { vm.dmName(it) } ?: "#${channel.name}"
-    val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) v.join(channel.id, title) }
+    val askMic = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) vm.startCall(channel.id, title) }
     val askCam = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) v.toggleCamera(title) }
     val askScreen = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
         if (r.resultCode == Activity.RESULT_OK && r.data != null) v.startScreen(r.data!!, title)
     }
     fun has(p: String) = ContextCompat.checkSelfPermission(ctx, p) == PackageManager.PERMISSION_GRANTED
     var small by rememberSaveable(channel.id) { mutableStateOf(false) }
+    if (inThis) return  // in the call: the full-screen view / call pill handle it
 
     val others = v.members.keys.count { it != vm.me?.id }
     val phase = when {
@@ -152,7 +154,7 @@ fun CallStage(vm: AppViewModel, channel: Channel, isDm: Boolean, modifier: Modif
             ) {
                 if (!inThis) {
                     Button(
-                        onClick = { if (has(android.Manifest.permission.RECORD_AUDIO)) v.join(channel.id, title) else askMic.launch(android.Manifest.permission.RECORD_AUDIO) },
+                        onClick = { if (has(android.Manifest.permission.RECORD_AUDIO)) vm.startCall(channel.id, title) else askMic.launch(android.Manifest.permission.RECORD_AUDIO) },
                         enabled = !v.connecting, modifier = Modifier.fillMaxWidth().height(48.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Talking, contentColor = Color.Black),
                     ) {
@@ -320,6 +322,213 @@ fun IncomingCallOverlay(vm: AppViewModel) {
             Box(Modifier.size(52.dp).clip(CircleShape).background(Talking).clickable { vm.acceptCall() }, contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.Call, "Accept", Modifier.graphicsLayer { rotationZ = wob }, tint = Color.Black)
             }
+        }
+    }
+}
+
+// ======================= full-screen call =======================
+
+/**
+ * The call, full screen: the other person's picture blurred as a slowly drifting backdrop,
+ * a big voice-reactive portrait (or a grid for groups), live status / timer, and a floating
+ * glass dock. Swipe-down chevron minimises it to the call pill.
+ */
+@Composable
+fun CallScreen(vm: AppViewModel) {
+    val v = vm.voice
+    val ch = v.channelId ?: return
+    val scheme = MaterialTheme.colorScheme
+    val ctx = LocalContext.current
+    val dm = vm.dms.firstOrNull { it.id == ch }
+    val server = vm.servers.firstOrNull { s -> s.channels.any { it.id == ch } }
+    val channel = server?.channels?.firstOrNull { it.id == ch }
+    val title = dm?.let { vm.dmName(it) } ?: channel?.let { "#${it.name}" } ?: "Call"
+    val others = v.members.values.filter { it.userId != vm.me?.id }
+    val focus = dm?.userIds?.singleOrNull()?.let { vm.users[it] } ?: others.firstOrNull()?.let { vm.users[it.userId] }
+    val askCam = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { ok -> if (ok) v.toggleCamera(title) }
+    val askScreen = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+        if (r.resultCode == Activity.RESULT_OK && r.data != null) v.startScreen(r.data!!, title)
+    }
+    var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(500) } }
+    val elapsed = v.connectedAt?.let { (now - it) / 1000 }
+    val status = when {
+        v.connecting -> "Connecting…"
+        elapsed != null -> "%d:%02d".format(elapsed / 60, elapsed % 60)
+        dm != null -> "Ringing…"
+        else -> "Waiting for others"
+    }
+    androidx.activity.compose.BackHandler { vm.callExpanded = false }
+    val drift = rememberInfiniteTransition(label = "drift")
+    val zoom by drift.animateFloat(1.25f, 1.4f, infiniteRepeatable(tween(14_000, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "z")
+
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        // backdrop: their picture, huge and blurred, slowly breathing
+        focus?.avatarUrl?.let { url ->
+            coil3.compose.AsyncImage(
+                url, null,
+                Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom }.blur(70.dp),
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+            )
+        }
+        Box(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = 0.35f), Color.Black.copy(alpha = 0.55f), Color.Black.copy(alpha = 0.85f)))))
+
+        Column(Modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding()) {
+            // top: minimise · title · status
+            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = { vm.callExpanded = false }) { Icon(Icons.Rounded.KeyboardArrowDown, "Minimise", tint = Color.White, modifier = Modifier.size(30.dp)) }
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(title, color = Color.White, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    AnimatedContent(status, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "st") { s ->
+                        Text(s, color = Color.White.copy(alpha = 0.75f), style = MaterialTheme.typography.labelLarge.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace))
+                    }
+                }
+                Spacer(Modifier.width(48.dp))
+            }
+
+            // middle: one big portrait for 1:1 / ringing, a grid otherwise
+            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                val videos = buildList {
+                    v.localVideo?.let { add("You" to it) }
+                    for (m in v.members.values) for (id in listOfNotNull(m.screenTrack, m.videoTrack)) { v.videoTracks[id]?.let { add((vm.users[m.userId]?.displayName ?: "") to it) } }
+                }
+                when {
+                    videos.isNotEmpty() || others.size > 1 -> {
+                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                            androidx.compose.foundation.lazy.grid.GridCells.Fixed(2),
+                            contentPadding = PaddingValues(16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            items(videos.size, key = { "v" + videos[it].second.id() }) { i -> VideoTile(v.egl, videos[i].second, videos[i].first) }
+                            items(v.members.values.toList().size, key = { "m" + v.members.values.toList()[it].userId }) { i -> GridMember(vm, v.members.values.toList()[i]) }
+                        }
+                    }
+                    else -> {
+                        val m = others.firstOrNull()
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            if (m == null && focus != null) Ripples(Color.White) { Avatar(focus.displayName, focus.hue, 130.dp, userId = focus.id) }
+                            else if (m != null) BigPortrait(vm, m)
+                            Spacer(Modifier.height(18.dp))
+                            Text(focus?.displayName ?: title, color = Color.White, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                            if (m?.muted == true) Text("muted", color = Color.White.copy(alpha = 0.7f), style = MaterialTheme.typography.labelLarge)
+                        }
+                    }
+                }
+                // you, floating bottom-right (like a FaceTime preview)
+                vm.me?.let { me ->
+                    val mine = v.members[me.id]
+                    val lvl by animateFloatAsState(if (mine != null && !v.muted) mine.level.coerceIn(0f, 1f) else 0f, spring(0.7f, 500f), label = "me")
+                    Box(
+                        Modifier.align(Alignment.BottomEnd).padding(18.dp).size(78.dp)
+                            .graphicsLayer { val k = 1f + 0.06f * lvl; scaleX = k; scaleY = k }
+                            .clip(RoundedCornerShape(24.dp)).background(Color.White.copy(alpha = 0.12f))
+                            .border(2.dp, Talking.copy(alpha = (lvl * 3f).coerceAtMost(1f)), RoundedCornerShape(24.dp)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Avatar(me.displayName, me.hue, 56.dp, userId = me.id)
+                        if (v.muted) Icon(Icons.Rounded.MicOff, null, Modifier.align(Alignment.BottomEnd).padding(4.dp).size(18.dp).clip(CircleShape).background(scheme.error).padding(2.dp), tint = scheme.onError)
+                    }
+                }
+            }
+
+            // bottom: floating glass dock with labels
+            Row(
+                Modifier.padding(horizontal = 16.dp).padding(bottom = 18.dp).fillMaxWidth()
+                    .clip(RoundedCornerShape(36.dp)).background(Color.White.copy(alpha = 0.12f))
+                    .border(1.dp, Color.White.copy(alpha = 0.14f), RoundedCornerShape(36.dp))
+                    .padding(horizontal = 10.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.Top,
+            ) {
+                Labeled("Mute") { DockButton(if (v.muted) Icons.Rounded.MicOff else Icons.Rounded.Mic, "Mute", v.muted, 58.dp) { v.toggleMute() } }
+                Labeled("Deafen") { DockButton(if (v.deafened) Icons.Rounded.HeadsetOff else Icons.Rounded.Headset, "Deafen", v.deafened, 58.dp) { v.toggleDeafen() } }
+                Labeled("Camera") {
+                    DockButton(if (v.cameraOn) Icons.Rounded.Videocam else Icons.Rounded.VideocamOff, "Camera", v.cameraOn, 58.dp) {
+                        if (v.cameraOn || ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) v.toggleCamera(title) else askCam.launch(android.Manifest.permission.CAMERA)
+                    }
+                }
+                Labeled("Share") {
+                    DockButton(if (v.screenOn) Icons.Rounded.StopScreenShare else Icons.Rounded.ScreenShare, "Share screen", v.screenOn, 58.dp) {
+                        if (v.screenOn) v.stopScreen() else askScreen.launch((ctx.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).createScreenCaptureIntent())
+                    }
+                }
+                Labeled("End") { HangUp(58.dp) { v.leave(); vm.callExpanded = false } }
+            }
+        }
+    }
+}
+
+@Composable
+private fun Labeled(label: String, content: @Composable () -> Unit) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        content()
+        Spacer(Modifier.height(6.dp))
+        Text(label, color = Color.White.copy(alpha = 0.8f), style = MaterialTheme.typography.labelSmall)
+    }
+}
+
+/** The person you're talking to, big, in a living shape that swells and glows with their voice. */
+@Composable
+private fun BigPortrait(vm: AppViewModel, m: VoiceMember) {
+    val u = vm.users[m.userId]
+    val talking = m.level > 0.02f && !m.muted
+    val level by animateFloatAsState(if (talking) m.level.coerceIn(0f, 1f) else 0f, spring(dampingRatio = 0.65f, stiffness = 420f), label = "big")
+    val living = rememberLivingShape(seed = (m.userId % 997).toInt(), selected = !talking)
+    Box(Modifier.size(220.dp), contentAlignment = Alignment.Center) {
+        Box(Modifier.size(190.dp).graphicsLayer { val k = 1f + 0.18f * level; scaleX = k; scaleY = k; alpha = (level * 2f).coerceAtMost(0.75f); shape = living.shape(); clip = true }.background(Talking))
+        Box(Modifier.size(176.dp).graphicsLayer { val k = 1f + 0.05f * level; scaleX = k; scaleY = k; shape = living.shape(); clip = true }) {
+            if (u != null) Avatar(u.displayName, u.hue, 176.dp, userId = u.id, shape = androidx.compose.ui.graphics.RectangleShape)
+        }
+    }
+}
+
+/** A participant card in the group grid; its edge lights up while they talk. */
+@Composable
+private fun GridMember(vm: AppViewModel, m: VoiceMember) {
+    val u = vm.users[m.userId]
+    val talking = m.level > 0.02f && !m.muted
+    val glow by animateFloatAsState(if (talking) 1f else 0f, spring(1f, 600f), label = "g")
+    Box(
+        Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(26.dp)).background(Color.White.copy(alpha = 0.10f))
+            .border(3.dp, Talking.copy(alpha = glow), RoundedCornerShape(26.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        LivingMember(vm, m)
+    }
+}
+
+/**
+ * While you're in a call and not looking at it: a floating capsule at the top of the app
+ * (breathing dot, who, timer, mute, hang up). Tap it to go back to the call.
+ */
+@Composable
+fun CallPill(vm: AppViewModel, modifier: Modifier = Modifier) {
+    val v = vm.voice
+    val ch = v.channelId
+    AnimatedVisibility(
+        ch != null && !vm.callExpanded, modifier,
+        enter = slideInVertically(spring(0.8f, 420f)) { -it } + fadeIn(),
+        exit = slideOutVertically(spring(1f, 500f)) { -it } + fadeOut(),
+    ) {
+        val id = ch ?: return@AnimatedVisibility
+        val dm = vm.dms.firstOrNull { it.id == id }
+        val title = dm?.let { vm.dmName(it) } ?: vm.servers.firstNotNullOfOrNull { s -> s.channels.firstOrNull { it.id == id }?.let { "#${it.name}" } } ?: "Call"
+        var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
+        LaunchedEffect(Unit) { while (true) { now = System.currentTimeMillis(); delay(500) } }
+        val elapsed = v.connectedAt?.let { (now - it) / 1000 }
+        Row(
+            Modifier.statusBarsPadding().padding(top = 6.dp).clip(RoundedCornerShape(50))
+                .background(Color(0xFF0E3B24)).border(1.dp, Talking.copy(alpha = 0.5f), RoundedCornerShape(50))
+                .clickable { vm.callExpanded = true }.padding(start = 14.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            LiveDot(elapsed != null)
+            Spacer(Modifier.width(8.dp))
+            Text(title, color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 150.dp))
+            Spacer(Modifier.width(8.dp))
+            Text(elapsed?.let { "%d:%02d".format(it / 60, it % 60) } ?: if (v.connecting) "…" else "ringing", color = Talking, style = MaterialTheme.typography.labelLarge.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace))
+            Spacer(Modifier.width(8.dp))
+            DockButton(if (v.muted) Icons.Rounded.MicOff else Icons.Rounded.Mic, "Mute", v.muted, 36.dp) { v.toggleMute() }
+            Spacer(Modifier.width(6.dp))
+            HangUp(36.dp) { v.leave() }
         }
     }
 }

@@ -197,7 +197,7 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
         // instead of falling back to a flat slab where no messages are behind them
         ChatBackground(vm, Modifier.hazeSource(haze, zIndex = 0f))
         // voice channels, and DMs while you're in a call there, show the call stage on top
-        val isVoice = channel?.kind == ChannelKind.VOICE || (vm.selectedServerId == null && channel != null && vm.voice.channelId == channel.id)
+        val isVoice = channel?.kind == ChannelKind.VOICE && vm.voice.channelId != channel.id
         // the call stage resizes (and tucks away); messages start right under it
         var stageHeight by remember { mutableStateOf(0.dp) }
         val topPad = WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + 64.dp + if (isVoice) stageHeight else 0.dp
@@ -356,8 +356,8 @@ private fun TopBar(vm: AppViewModel, haze: HazeState, onMenu: () -> Unit, modifi
         if (vm.selectedServerId == null && c != null) {
             // call this DM / group (Root calls DMs through the same voice service as channels)
             val inCall = vm.voice.channelId == c.id
-            IconButton(onClick = { if (inCall) vm.voice.leave() else vm.voice.join(c.id, vm.dms.firstOrNull { it.id == c.id }?.let { vm.dmName(it) } ?: c.name) }) {
-                Icon(if (inCall) Icons.Rounded.CallEnd else Icons.Rounded.Call, if (inCall) "Leave call" else "Call", tint = if (inCall) MaterialTheme.colorScheme.error else LocalContentColor.current)
+            IconButton(onClick = { if (inCall) vm.callExpanded = true else vm.startCall(c.id, vm.dms.firstOrNull { it.id == c.id }?.let { vm.dmName(it) } ?: c.name) }) {
+                Icon(Icons.Rounded.Call, if (inCall) "Open call" else "Call", tint = if (inCall) Color(0xFF2FD47A) else LocalContentColor.current)
             }
             var adding by remember { mutableStateOf(false) }
             IconButton(onClick = { adding = true }) { Icon(Icons.Rounded.PersonAdd, "Add people") }
