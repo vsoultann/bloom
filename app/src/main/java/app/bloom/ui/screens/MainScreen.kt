@@ -78,8 +78,12 @@ internal fun SignedIn(vm: AppViewModel) {
     // 0 = chat panel covers the screen; openX = slid right to reveal servers/channels
     val offset = remember { Animatable(0f) }
     var panelOpen by remember { mutableStateOf(true) }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    val focus = androidx.compose.ui.platform.LocalFocusManager.current
     fun settle(open: Boolean) {
         panelOpen = open
+        // leaving the chat: put the keyboard away
+        if (open) { keyboard?.hide(); focus.clearFocus() }
         scope.launch { offset.animateTo(if (open) openX else 0f, Motion.spatial()) }
     }
     // keep the panel in place across size changes (first layout, rotation, foldables)
@@ -147,6 +151,8 @@ internal fun SignedIn(vm: AppViewModel) {
                     .draggable(
                         rememberDraggableState { d -> scope.launch { offset.snapTo((offset.value + d).coerceIn(0f, openX)) } },
                         Orientation.Horizontal,
+                        // the moment you start swiping the chat away, the keyboard starts going down
+                        onDragStarted = { if (offset.value < 1f) { keyboard?.hide(); focus.clearFocus() } },
                         onDragStopped = { v -> settle(if (v > 600f) true else if (v < -600f) false else offset.value > openX / 2) },
                     ),
             ) {
