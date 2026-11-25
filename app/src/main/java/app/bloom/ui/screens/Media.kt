@@ -254,7 +254,9 @@ fun EmojiPanel(vm: AppViewModel, onPick: (String) -> Unit) {
     LaunchedEffect(Unit) { vm.loadEmoji() }
     var query by remember { mutableStateOf("") }
     val cats = remember(vm.emojiCatalog) { vm.emojiCatalog.groupBy { it.category } }
-    var cat by remember { mutableStateOf("Custom") }
+    // frequently used first (like Root's own panel), when there are any
+    var cat by remember { mutableStateOf(if (vm.recentEmoji.isNotEmpty()) "Recent" else "Custom") }
+    val pick: (String) -> Unit = { e -> vm.noteEmoji(e); onPick(e) }
     Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).fillMaxHeight().padding(horizontal = 10.dp)) {
         OutlinedTextField(
             query, { query = it }, placeholder = { Text("Search emoji") }, singleLine = true,
@@ -263,13 +265,19 @@ fun EmojiPanel(vm: AppViewModel, onPick: (String) -> Unit) {
         )
         if (query.isBlank()) {
             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 6.dp)) {
-                items(listOf("Custom") + cats.keys.toList()) { c ->
+                items((if (vm.recentEmoji.isNotEmpty()) listOf("Recent") else emptyList()) + listOf("Custom") + cats.keys.toList()) { c ->
                     FilterChip(cat == c, { cat = c }, { Text(c.substringBefore(" &"), maxLines = 1) })
                 }
             }
         }
         val q = query.trim().lowercase()
         LazyVerticalGrid(GridCells.Adaptive(44.dp)) {
+            if (q.isEmpty() && cat == "Recent") items(vm.recentEmoji, key = { "r-$it" }) { e ->
+                Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable { pick(e) }, contentAlignment = Alignment.Center) {
+                    if (app.bloom.ui.theme.Ui.emojiPack != "system") EmojiGlyph(e, Modifier.size(30.dp)) else
+                    Text(e, style = MaterialTheme.typography.headlineSmall)
+                }
+            }
             val custom = vm.customEmoji.filter { q.isEmpty() || it.shortcode.lowercase().contains(q) }
             if (q.isNotEmpty() || cat == "Custom") items(custom, key = { "c-" + it.id }) { e ->
                 Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable { onPick(vm.emojiChar(vm.customEmoji.indexOf(e))) }.padding(6.dp)) {
@@ -278,7 +286,7 @@ fun EmojiPanel(vm: AppViewModel, onPick: (String) -> Unit) {
             }
             val list = if (q.isNotEmpty()) vm.emojiCatalog.filter { e -> e.names.any { it.contains(q) } } else cats[cat].orEmpty()
             items(list, key = { "u-" + it.emoji }) { e ->
-                Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable { onPick(e.emoji) }, contentAlignment = Alignment.Center) {
+                Box(Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).clickable { pick(e.emoji) }, contentAlignment = Alignment.Center) {
                     if (app.bloom.ui.theme.Ui.emojiPack != "system") EmojiGlyph(e.emoji, Modifier.size(30.dp)) else
                     Text(e.emoji, style = MaterialTheme.typography.headlineSmall)
                 }

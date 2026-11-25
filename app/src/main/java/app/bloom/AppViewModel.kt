@@ -62,6 +62,14 @@ sealed interface Screen {
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
+    /**
+     * Every coroutine here runs with this: a failed Root call (or any bug) becomes a toast
+     * and a log line instead of crashing the app.
+     */
+    private val safe = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        android.util.Log.e("Bloom", "coroutine failed", e)
+        errorState.value = e.message ?: e.javaClass.simpleName
+    }
     companion object {
         /** Bloom is on screen (set by MainActivity); used to skip notifications for the open chat. */
         @Volatile var visible = false
@@ -121,7 +129,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             setRequestProperty("x-amz-meta-root-file-modification", java.time.Instant.ofEpochMilli(file.lastModified()).toString())
             setRequestProperty("x-amz-meta-root-file-name", name)
             setRequestProperty("content-type", mime.ifBlank { "application/octet-stream" })
-            setRequestProperty("user-agent", "Bloom/0.1.0 (Android)")
+            setRequestProperty("user-agent", "Bloom/${BuildConfig.VERSION_NAME} (Android)")
         }
         conn.outputStream.use { o ->
             file.inputStream().use { i ->
@@ -135,7 +143,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }
         }
         val code = conn.responseCode
-        val body = (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.readText() ?: ""
+        val body = try {
+            (if (code in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
+        } finally { conn.disconnect() }
         if (code !in 200..299) error("Upload failed (HTTP $code)")
         runCatching { org.json.JSONTokener(body).nextValue() as String }.getOrElse { body.trim('"') }
     }
@@ -149,7 +159,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     var notifications by mutableStateOf<List<Notification>>(emptyList()); private set
     var loadingNotifications by mutableStateOf(false); private set
-    fun loadNotifications() = viewModelScope.launch {
+    fun loadNotifications() = viewModelScope.launch(safe) {
         loadingNotifications = true
         notifications = runCatching { Core.notifications() }.getOrElse { error = it.message; notifications }
         runCatching { Core.users() }.getOrNull()?.let { putUsers(it) }
@@ -165,7 +175,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             else -> { selectedServerId = null; openChannel(ch) }
         }
         screen = Screen.Chat
-        n.messageId?.let { id -> viewModelScope.launch { delay(900); flash(id) } }
+        n.messageId?.let { id -> viewModelScope.launch(safe) { delay(900); flash(id) } }
     }
 
     // ---- Customize: fonts & now playing ----
@@ -175,7 +185,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var npOn by mutableStateOf(false); private set
     val npApps = mutableStateListOf<String>()
 
-    fun chooseFont(id: String) = viewModelScope.launch {
+    fun chooseFont(id: String) = viewModelScope.launch(safe) {
         val ctx = getApplication<Application>()
         if (!Fonts.isDownloaded(ctx, id)) {
             fontLoading = id
@@ -189,7 +199,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Core.setSetting("ui_font", id)
     }
 
-    fun importFont(uri: Uri, name: String, done: () -> Unit) = viewModelScope.launch {
+    fun importFont(uri: Uri, name: String, done: () -> Unit) = viewModelScope.launch(safe) {
         Fonts.import(getApplication(), uri, name)
             .onSuccess { id -> fontsReady++; done(); chooseFont(id) }
             .onFailure { error = "That file isn't a font Android can read" }
@@ -197,7 +207,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun toggleNpApp(pkg: String) {
         if (pkg in npApps) npApps.remove(pkg) else npApps.add(pkg)
-        viewModelScope.launch { Core.setSetting("np_apps", org.json.JSONArray(npApps.toList())) }
+        viewModelScope.launch(safe) { Core.setSetting("np_apps", org.json.JSONArray(npApps.toList())) }
     }
 
     // ---- per-person settings (long-press a friend / DM) ----
@@ -222,7 +232,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun loadRoles(serverId: Long) {
         if (serverId in roles) return
         roles[serverId] = emptyList()
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             runCatching { Core.social("roles", JSONObject().put("server_id", serverId)) as org.json.JSONArray }.onSuccess { a ->
                 roles[serverId] = (0 until a.length()).map { i -> a.getJSONObject(i).let { Triple(it.getString("id"), it.getString("name"), it.optString("color")) } }
             }
@@ -235,7 +245,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** (server, user) → role ids */
     val memberRoles = mutableStateMapOf<Pair<Long, Long>, List<String>>()
 
-    fun loadServerRoles(serverId: Long, force: Boolean = false) = viewModelScope.launch {
+    fun loadServerRoles(serverId: Long, force: Boolean = false) = viewModelScope.launch(safe) {
         if (!force && serverRoles[serverId]?.isNotEmpty() == true) return@launch
         runCatching { Core.social("roles_all", JSONObject().put("server_id", serverId)) as org.json.JSONArray }
             .onSuccess { a ->
@@ -245,13 +255,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             }.onFailure { error = "Couldn't load roles: ${it.message}" }
     }
 
-    fun loadMemberRoles(serverId: Long, userId: Long) = viewModelScope.launch {
+    fun loadMemberRoles(serverId: Long, userId: Long) = viewModelScope.launch(safe) {
         loadServerRoles(serverId)
         runCatching { Core.social("member_roles", JSONObject().put("server_id", serverId).put("user_id", userId)) as org.json.JSONArray }
             .onSuccess { a -> memberRoles[serverId to userId] = (0 until a.length()).map { a.getString(it) } }
     }
 
-    private fun roleOp(op: String, args: JSONObject, serverId: Long, after: suspend () -> Unit = {}) = viewModelScope.launch {
+    private fun roleOp(op: String, args: JSONObject, serverId: Long, after: suspend () -> Unit = {}) = viewModelScope.launch(safe) {
         runCatching { Core.social(op, args.put("server_id", serverId)) }
             .onSuccess { loadServerRoles(serverId, force = true).join(); after() }
             .onFailure { error = "Root said no: ${it.message}" }
@@ -269,7 +279,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val before = memberRoles[key].orEmpty()
         memberRoles[key] = if (on) (before + roleId).distinct() else before - roleId
         pendingRoles.add(roleId)
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             runCatching {
                 Core.social(if (on) "member_role_add" else "member_role_remove", JSONObject().put("server_id", serverId).put("role_id", roleId).put("user_id", userId))
             }.onFailure { memberRoles[key] = before; error = "Root said no: ${it.message}" }
@@ -296,7 +306,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun realName(id: Long) = realNames[id] ?: users[id]?.displayName ?: ""
 
-    private fun saveMap(key: String, m: Map<Long, Any>) = viewModelScope.launch {
+    private fun saveMap(key: String, m: Map<Long, Any>) = viewModelScope.launch(safe) {
         Core.setSetting(key, JSONObject().apply { m.forEach { (k, v) -> put(k.toString(), v) } })
     }
 
@@ -327,22 +337,52 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return until == -1L || until > System.currentTimeMillis()
     }
 
+    /** Most-used unicode emoji, most frequent first (Recent tab in the emoji panel). */
+    var recentEmoji by mutableStateOf<List<String>>(emptyList()); private set
+    private val emojiCounts = mutableMapOf<String, Int>()
+    fun noteEmoji(e: String) {
+        // custom emoji are session-local private-use characters; only real emoji are remembered
+        if (e.isEmpty() || e.codePointAt(0) in 0xE000..0xF8FF) return
+        emojiCounts[e] = (emojiCounts[e] ?: 0) + 1
+        recentEmoji = emojiCounts.entries.sortedByDescending { it.value }.take(32).map { it.key }
+        viewModelScope.launch(safe) { Core.setSetting("emoji_counts", JSONObject().apply { emojiCounts.entries.sortedByDescending { it.value }.take(64).forEach { (k, v) -> put(k, v) } }) }
+    }
+
+    /** Unsent text per chat. Saved (debounced) so drafts survive restarts. */
+    val drafts = mutableStateMapOf<Long, String>()
+    private var draftSave: Job? = null
+    fun saveDraft(ch: Long, text: String) {
+        if ((drafts[ch] ?: "") == text) return
+        if (text.isBlank()) drafts.remove(ch) else drafts[ch] = text
+        draftSave?.cancel()
+        draftSave = viewModelScope.launch(safe) { delay(800); Core.setSetting("drafts", JSONObject().apply { drafts.forEach { (k, v) -> put(k.toString(), v) } }) }
+    }
+
     fun togglePinDm(ch: Long) {
         if (ch in pinnedDms) pinnedDms.remove(ch) else pinnedDms.add(0, ch)
         if (!plugin("pin_dms")) togglePlugin("pin_dms", true)
-        viewModelScope.launch { Core.setSetting("pinned_dms", org.json.JSONArray(pinnedDms.toList())) }
+        viewModelScope.launch(safe) { Core.setSetting("pinned_dms", org.json.JSONArray(pinnedDms.toList())) }
     }
 
     /** The 1:1 DM with someone, if there is one. */
     fun dmWith(userId: Long) = dms.firstOrNull { it.userIds == listOf(userId) }
 
+    private val everyoneRx = Regex("⟦m:(All|Here|everyone|here)⟧", RegexOption.IGNORE_CASE)
+    /** Mentions carry the name Root showed at the time: match your real name, username and current display name. */
+    private fun mentionsMe(content: String): Boolean {
+        val my = me ?: return false
+        return listOfNotNull(realNames[my.id], my.displayName, my.name).filter { it.isNotBlank() }.distinct()
+            .any { content.contains("⟦m:$it⟧", ignoreCase = true) }
+    }
+    private fun repliesToMe(m: Message): Boolean {
+        val my = me?.id ?: return false
+        return m.replyAuthor == my || m.moreReplies.any { it.author == my }
+    }
+
     /** Message mentions you, pings everyone, or replies to you → highlighted in chat. */
     fun isForMe(m: Message): Boolean {
-        val my = me ?: return false
-        if (m.authorId == my.id) return false
-        val name = realNames[my.id] ?: my.displayName
-        return m.content.contains("⟦m:$name⟧") || m.replyAuthor == my.id || m.moreReplies.any { it.author == my.id } ||
-            Regex("⟦m:(All|Here|everyone|here)⟧", RegexOption.IGNORE_CASE).containsMatchIn(m.content)
+        if (me == null || m.authorId == me?.id) return false
+        return mentionsMe(m.content) || repliesToMe(m) || everyoneRx.containsMatchIn(m.content)
     }
 
     /** Opens any channel or DM by id (from a system notification). */
@@ -354,7 +394,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         screen = Screen.Chat
         Notifier.clear(getApplication(), ch)
-        if (messageId != 0L) viewModelScope.launch { delay(900); flash(messageId) }
+        if (messageId != 0L) viewModelScope.launch(safe) { delay(900); flash(messageId) }
     }
 
     /** Decides whether a new message deserves a notification, following the settings. */
@@ -362,10 +402,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!notifOn || m.authorId == me?.id || m.system != null) return
         // already looking at it
         if (visible && m.channelId == selectedChannelId && screen == Screen.Chat) return
-        val myName = me?.displayName
         val dm = dms.firstOrNull { it.id == m.channelId }
-        val mentioned = myName != null && m.content.contains("⟦m:$myName⟧")
-        val everyone = Regex("⟦m:(All|Here|everyone|here)⟧", RegexOption.IGNORE_CASE).containsMatchIn(m.content)
+        val mentioned = mentionsMe(m.content)
+        val everyone = everyoneRx.containsMatchIn(m.content)
         // per-person: muted, or their own notification level
         if (isMuted(m.authorId)) return
         when (userNotif[m.authorId]) {
@@ -374,7 +413,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "all" -> if (dm == null && !mentioned && !replyToMe && !everyone) {
                 val author0 = users[m.authorId]
                 val place0 = servers.firstNotNullOfOrNull { s -> s.channels.firstOrNull { it.id == m.channelId }?.let { "${s.name} · #${it.name}" } }
-                viewModelScope.launch {
+                viewModelScope.launch(safe) {
                     Notifier.show(getApplication(), Notifier.Item(m.channelId, m.id, author0?.displayName ?: "Someone", author0?.avatarUrl,
                         plainText(m.content), place0, Notifier.SERVER, "${author0?.displayName ?: "Someone"} posted" + (place0?.let { " in $it" } ?: "")),
                         Notifier.Prefs(notifStyle, notifPlace))
@@ -399,7 +438,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             text = plainText(m.content).replace(Regex("⟦m:([^⟧]*)⟧"), "@$1").replace(Regex("⟦[a-z]:[^⟧]*⟧"), ""),
             place = place, why = why, whyLabel = "${author?.displayName ?: "Someone"} $label" + (place?.let { " in $it" } ?: ""),
         )
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             Notifier.show(getApplication(), item, Notifier.Prefs(notifStyle, notifPlace))
         }
     }
@@ -419,35 +458,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return out.sortedByDescending { it.first }
     }
 
-    fun clearDiagnostics() = viewModelScope.launch {
+    fun clearDiagnostics() = viewModelScope.launch(safe) {
         Core.clearLogs()
         java.io.File(getApplication<Application>().filesDir, "logs/crash.log").delete()
     }
 
-    fun markNotificationsRead() = viewModelScope.launch {
+    fun markNotificationsRead() = viewModelScope.launch(safe) {
         runCatching { Core.social("notifications_read") }
         notifications = notifications.map { it.copy(viewed = true) }
     }
-    fun respondFriend(n: Notification, accept: Boolean) = viewModelScope.launch {
+    fun respondFriend(n: Notification, accept: Boolean) = viewModelScope.launch(safe) {
         val user = n.userId ?: return@launch
         runCatching { Core.social("friend_respond", JSONObject().put("notification", n.id).put("user", user).put("accept", accept)) }
             .onSuccess { notifications = notifications - n; if (accept) { friends = Core.friends(); error = "Friend added" } }
             .onFailure { error = it.message }
     }
-    fun addFriend(username: String) = viewModelScope.launch {
+    fun addFriend(username: String) = viewModelScope.launch(safe) {
         runCatching { Core.social("friend_request", JSONObject().put("username", username)) }
             .onSuccess { error = "Friend request sent to $username" }.onFailure { error = it.message }
     }
-    fun removeFriend(userId: Long) = viewModelScope.launch {
+    fun removeFriend(userId: Long) = viewModelScope.launch(safe) {
         runCatching { Core.social("friend_remove", JSONObject().put("user", userId)) }
             .onSuccess { friends = friends.filter { it.id != userId } }.onFailure { error = it.message }
     }
-    fun createGroup(userIds: List<Long>) = viewModelScope.launch {
+    fun createGroup(userIds: List<Long>) = viewModelScope.launch(safe) {
         runCatching { Core.social("dm_create", JSONObject().put("users", JSONArray(userIds))) }
             .onSuccess { r -> dms = Core.dms(); (r as? Number)?.toLong()?.let { openDm(it) } }
             .onFailure { error = it.message }
     }
-    fun addToGroup(dm: Long, userIds: List<Long>) = viewModelScope.launch {
+    fun addToGroup(dm: Long, userIds: List<Long>) = viewModelScope.launch(safe) {
         runCatching { Core.social("dm_add", JSONObject().put("dm", dm).put("users", JSONArray(userIds))) }
             .onSuccess { dms = Core.dms() }.onFailure { error = it.message }
     }
@@ -460,12 +499,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val server = servers.firstOrNull { s -> s.channels.any { it.id == m.channelId } }
         if (server != null) { selectedServerId = server.id; openChannel(m.channelId) } else openDm(m.channelId)
         screen = Screen.Chat
-        viewModelScope.launch { delay(600); flash(m.id) }
+        viewModelScope.launch(safe) { delay(600); flash(m.id) }
     }
+
+    /** Ask the open chat to scroll to a message (and flash it). */
+    var jumpTarget by mutableStateOf<Long?>(null)
 
     /** Message briefly highlighted after jumping to it from a reply. */
     var flashId by mutableStateOf<Long?>(null)
-    fun flash(id: Long) = viewModelScope.launch { flashId = id; delay(1400); if (flashId == id) flashId = null }
+    fun flash(id: Long) = viewModelScope.launch(safe) { flashId = id; delay(1400); if (flashId == id) flashId = null }
 
     /** Image/video opened full screen. */
     var viewer by mutableStateOf<Attachment?>(null)
@@ -475,7 +517,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         get() = errorState.value
         set(v) {
             errorState.value = v
-            if (v != null) viewModelScope.launch { runCatching { Core.log("ui", v) } }
+            if (v != null) viewModelScope.launch(safe) { runCatching { Core.log("ui", v) } }
         }
 
     // Appearance
@@ -501,7 +543,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var profileJob: Job? = null
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             val tz = TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
             Core.init(app.filesDir.absolutePath, tz)
             val settings = Core.settings()
@@ -536,10 +578,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 u.rounding = settings.optDouble("ui_rounding", 1.0).toFloat()
                 u.messageEnter = settings.optString("ui_msg_enter", "rise")
                 u.hideStatusBar = settings.optBoolean("ui_hide_status", false)
+                u.haptics = settings.optBoolean("ui_haptics", true)
             }
             settings.optJSONObject("nicknames")?.let { o -> o.keys().forEach { k -> k.toLongOrNull()?.let { nicknames[it] = o.getString(k) } } }
             settings.optJSONObject("user_notif")?.let { o -> o.keys().forEach { k -> k.toLongOrNull()?.let { userNotif[it] = o.getString(k) } } }
             settings.optJSONObject("mute_until")?.let { o -> o.keys().forEach { k -> k.toLongOrNull()?.let { muteUntil[it] = o.getLong(k) } } }
+            settings.optJSONObject("emoji_counts")?.let { o -> o.keys().forEach { k -> emojiCounts[k] = o.optInt(k) }; recentEmoji = emojiCounts.entries.sortedByDescending { it.value }.take(32).map { it.key } }
+            settings.optJSONObject("drafts")?.let { o -> o.keys().forEach { k -> k.toLongOrNull()?.let { drafts[it] = o.getString(k) } } }
             settings.optJSONArray("pinned_dms")?.let { a -> for (i in 0 until a.length()) pinnedDms.add(a.getLong(i)) }
             notifOn = settings.optBoolean("notif_on", true)
             notifDms = settings.optBoolean("notif_dms", true)
@@ -601,7 +646,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Refreshes everything from Root in small steps while the cached UI is already usable. */
     fun startRefresh() {
         refreshJob?.cancel()
-        refreshJob = viewModelScope.launch {
+        refreshJob = viewModelScope.launch(safe) {
             refreshing = true
             var step: Int? = 0
             while (step != null) {
@@ -628,7 +673,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun saveCacheNow() = viewModelScope.launch { runCatching { Core.saveCache() } }
+    fun saveCacheNow() = viewModelScope.launch(safe) { runCatching { Core.saveCache() } }
 
     private suspend fun loadAll() {
         me = Core.me()
@@ -651,7 +696,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             else -> servers.firstOrNull()?.let { selectServer(it.id) }
         }
         pollJob?.cancel()
-        pollJob = viewModelScope.launch { pollLoop() }
+        pollJob = viewModelScope.launch(safe) { pollLoop() }
+        me?.id?.let { id -> viewModelScope.launch(safe) { refreshUser(id) } }
     }
 
     fun signIn(username: String, password: String) {
@@ -675,7 +721,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val (u, p) = pendingLogin ?: return
         signingIn = true
         loginError = null
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             runCatching {
                 Core.signIn(u, p, turnstile, android.os.Build.MODEL ?: "Android", android.os.Build.VERSION.RELEASE ?: "")
             }.onSuccess { r ->
@@ -695,12 +741,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun tryDemo() = viewModelScope.launch {
+    fun tryDemo() = viewModelScope.launch(safe) {
         authMode = Core.demo().mode
         loadAll()
     }
 
-    fun signOut() = viewModelScope.launch {
+    fun signOut() = viewModelScope.launch(safe) {
         voice.leave()
         pollJob?.cancel()
         authMode = Core.signOut().mode
@@ -712,10 +758,22 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         users.clear()
         selectedServerId = null
         selectedChannelId = null
+        // nothing from this account may leak into the next sign-in
+        dms = emptyList()
+        mentions.clear()
+        notifications = emptyList()
+        typing.clear()
+        replying.clear()
+        editing = null
+        pending.clear()
+        incomingCall = null
+        profileUserId = null
+        roles.clear(); serverRoles.clear(); memberRoles.clear()
+        realNames.clear()
     }
 
     init {
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             snapshotFlow { voice.error }.collect { e -> if (e != null) { error = "Call: $e"; runCatching { Core.log("voice", e) } } }
         }
     }
@@ -728,9 +786,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             for (ev in runCatching { Core.poll() }.getOrDefault(emptyList())) when (ev) {
                 is Event.NewMessage -> {
                     if (ev.message.authorId !in users) runCatching { Core.users() }.getOrNull()?.let { putUsers(it) }
-                    val myName = me?.displayName
-                    val replyToMe = ev.message.replyAuthor != null && ev.message.replyAuthor == me?.id
-                    if (ev.message.authorId != me?.id && (replyToMe || (myName != null && ev.message.content.contains("⟦m:$myName⟧")))) {
+                    val replyToMe = repliesToMe(ev.message)
+                    if (ev.message.authorId != me?.id && (replyToMe || mentionsMe(ev.message.content))) {
                         mentions.add(0, ev.message)
                         if (mentions.size > 100) mentions.removeAt(mentions.lastIndex)
                     }
@@ -763,6 +820,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     if (ev.callerId !in users) runCatching { Core.users() }.getOrNull()?.let { putUsers(it) }
                     incomingCall = IncomingCall(ev.channelId, ev.callerId, System.currentTimeMillis())
                     if (!visible) app.bloom.notify.Notifier.ringing(getApplication(), ev.channelId, users[ev.callerId]?.displayName ?: "Someone", users[ev.callerId]?.avatarUrl)
+                }
+                is Event.UserChanged -> {
+                    putUsers(listOf(ev.user.let { u -> users[u.id]?.let { old -> u.copy(status = old.status) } ?: u }))
+                    if (ev.user.id == me?.id) me = users[ev.user.id]
                 }
                 is Event.RingDeclined -> if (voice.channelId == ev.channelId) error = "${users[ev.userId]?.displayName ?: "They"} declined the call"
                 Event.Unknown -> {}
@@ -812,7 +873,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val ch = selectedChannelId ?: return
         if (loadingOlder || noMoreHistory || messages.isEmpty()) return
         loadingOlder = true
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             val result = runCatching { Core.olderMessages(ch) }
             runCatching { Core.users() }.getOrNull()?.let { putUsers(it) }
             if (selectedChannelId == ch) result.onSuccess { older ->
@@ -854,11 +915,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val c = incomingCall ?: return
         incomingCall = null
         app.bloom.notify.Notifier.clear(getApplication(), c.channelId + 7_000_000)
-        viewModelScope.launch { runCatching { Core.social("ring_decline", JSONObject().put("channel", c.channelId)) } }
+        viewModelScope.launch(safe) { runCatching { Core.social("ring_decline", JSONObject().put("channel", c.channelId)) } }
     }
 
     /** Opens the You page and closes the side panel so the page (and the flying avatar) is in view. */
     fun openYou() { screen = Screen.You; channelOpens++ }
+
+    /** Opens a channel of a given community (quick switcher, search). */
+    fun openChannelIn(serverId: Long, id: Long) {
+        selectedServerId = serverId
+        openChannel(id)
+    }
 
     fun openChannel(id: Long) {
         selectChannel(id)
@@ -868,14 +935,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun selectChannel(id: Long) {
         screen = Screen.Chat
         selectedChannelId = id
-        viewModelScope.launch { runCatching { Core.setSetting("last_channel", id) } }
+        viewModelScope.launch(safe) { runCatching { Core.setSetting("last_channel", id) } }
         replyingTo = null
         editing = null
+        pins = null
         listEpoch++          // clearing is a swap too: nothing may fade out over the next chat
         messages.clear()
         loadingMessages = true
         noMoreHistory = false
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             // instant: whatever we have cached
             runCatching { Core.cachedMessages(id) }.getOrNull()?.takeIf { it.isNotEmpty() }?.let { cached ->
                 if (selectedChannelId == id) { listEpoch++; messages.clear(); messages.addAll(cached) }
@@ -943,7 +1011,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Saves only what changed; images are copied to cache for the core to upload. */
     fun saveProfile(username: String?, bio: String?, status: String?, presence: String?, avatar: Uri?, banner: Uri?, done: () -> Unit) {
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             savingProfile = true
             val tmp = mutableListOf<File>()
             runCatching {
@@ -973,23 +1041,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sendGif(url: String) {
         val channel = selectedChannelId ?: return
-        viewModelScope.launch { runCatching { messages.add(Core.send(channel, url, replyingTo?.id)) }.onFailure { error = it.message } }
+        viewModelScope.launch(safe) { runCatching { messages.add(Core.send(channel, url, replyingTo?.id)) }.onFailure { error = it.message } }
         replyingTo = null
     }
 
-    fun loadGifs(query: String) = viewModelScope.launch {
+    fun loadGifs(query: String) = viewModelScope.launch(safe) {
         gifError = null
         if (gifFavorites.isEmpty()) gifFavorites = runCatching { Core.gifFavorites() }.getOrDefault(emptyList())
         gifResults = runCatching { Core.gifSearch(query) }.getOrElse { gifError = it.message; emptyList() }
     }
 
-    fun toggleGifFavorite(url: String) = viewModelScope.launch {
+    fun toggleGifFavorite(url: String) = viewModelScope.launch(safe) {
         val add = url !in gifFavorites
         gifFavorites = if (add) listOf(url) + gifFavorites else gifFavorites - url
         runCatching { Core.gifFavorite(url, add) }
     }
 
-    fun loadEmoji() = viewModelScope.launch {
+    fun loadEmoji() = viewModelScope.launch(safe) {
         if (emojiCatalog.isEmpty()) emojiCatalog = runCatching { Core.emojiCatalog() }.getOrDefault(emptyList())
         if (customEmoji.isEmpty()) {
             customEmoji = runCatching { Core.customEmoji() }.getOrDefault(emptyList())
@@ -1011,7 +1079,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val url = a.url ?: return
         val ctx = getApplication<Application>()
         saving = true
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             runCatching {
                 val isVideo = a.kind == AttachmentKind.VIDEO
                 val stamp = System.currentTimeMillis()
@@ -1043,7 +1111,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun sendVoice(file: File, durationMs: Long, samples: List<Float> = emptyList()) {
         val channel = selectedChannelId ?: return
         if (durationMs < 600) { file.delete(); return }
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             uploading = true
             runCatching {
                 // Root's own name format makes it a voice message (duration + waveform) everywhere
@@ -1067,7 +1135,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             replying.clear()
             val job = Outgoing(System.nanoTime(), toSend, text)
             outgoing.add(job)
-            viewModelScope.launch {
+            viewModelScope.launch(safe) {
                 runCatching {
                     // each file's share of the bar is its share of the total size
                     val files = toSend.map { it to toCacheFile(it) }
@@ -1139,7 +1207,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val replyIds = replying.map { it.id }
         replying.clear()
         editing = null
-        viewModelScope.launch {
+        viewModelScope.launch(safe) {
             runCatching {
                 if (editTarget != null) {
                     (Core.edit(editTarget.id, text) as? Event.Update)?.let { replace(it.message) }
@@ -1155,10 +1223,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (now - lastTypingSent < 8_000) return
         lastTypingSent = now
         val ch = selectedChannelId ?: return
-        viewModelScope.launch { runCatching { Core.typing(ch) } }
+        viewModelScope.launch(safe) { runCatching { Core.typing(ch) } }
     }
 
-    fun delete(m: Message) = viewModelScope.launch {
+    fun delete(m: Message) = viewModelScope.launch(safe) {
         when (val ev = Core.delete(m.id)) {
             is Event.Remove -> messages.removeAll { it.id == ev.id }
             is Event.Update -> replace(ev.message)
@@ -1166,9 +1234,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun react(m: Message, emoji: String) = viewModelScope.launch { replace(Core.react(m.id, emoji)) }
+    fun react(m: Message, emoji: String) = viewModelScope.launch(safe) {
+        if (emoji.isNotEmpty() && !emoji[0].isLetterOrDigit()) noteEmoji(emoji)
+        runCatching { Core.react(m.id, emoji) }.onSuccess { replace(it) }.onFailure { error = "Couldn't react: ${it.message}" }
+    }
 
-    fun readAll() = viewModelScope.launch {
+    fun readAll() = viewModelScope.launch(safe) {
         Core.markRead(null)
         servers = Core.servers()
     }
@@ -1178,20 +1249,53 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         profileMutuals = null
         profileJob?.cancel()
         // Never leave the spinner hanging: on failure show "none in common" and surface the error.
-        profileJob = viewModelScope.launch {
+        profileJob = viewModelScope.launch(safe) {
+            // full profile first (bio, banner, cosmetics now come from Root's User/Get), quietly
+            launch { refreshUser(userId) }
             profileMutuals = runCatching { Core.mutuals(userId) }.getOrElse { error = it.message; Mutuals(emptyList(), emptyList()) }
         }
     }
 
+    /** Fetches someone's full profile (User/Get) and merges it in. Failures are logged, not shown. */
+    suspend fun refreshUser(userId: Long) {
+        runCatching { Core.social("user_get", JSONObject().put("user", userId)) as JSONObject }
+            .onSuccess { o -> putUsers(listOf(User.from(o).let { fresh -> users[userId]?.let { old -> fresh.copy(status = old.status) } ?: fresh })); if (userId == me?.id) me = users[userId] }
+            .onFailure { runCatching { Core.log("profile", "user_get: ${it.message}") } }
+    }
+
+    // ---- pinned messages ----
+    var pins by mutableStateOf<List<Message>?>(null); private set
+    var pinsLoading by mutableStateOf(false); private set
+    fun loadPins() {
+        val ch = selectedChannelId ?: return
+        pinsLoading = true
+        viewModelScope.launch(safe) {
+            val r = runCatching { Core.social("pins", JSONObject().put("channel", ch)) as JSONArray }
+            runCatching { Core.users() }.getOrNull()?.let { putUsers(it) }
+            if (selectedChannelId == ch) pins = r.map { a -> (0 until a.length()).map { Message.from(a.getJSONObject(it)) } }
+                .getOrElse { error = "Couldn't load pinned messages: ${it.message}"; emptyList() }
+            pinsLoading = false
+        }
+    }
+    fun closePins() { pins = null }
+    fun setPinned(m: Message, pin: Boolean) = viewModelScope.launch(safe) {
+        runCatching { Core.social(if (pin) "pin" else "unpin", JSONObject().put("id", m.id).put("channel", m.channelId)) }
+            .onSuccess {
+                error = if (pin) "Pinned" else "Unpinned"
+                pins = pins?.let { list -> if (pin) (listOf(m) + list).distinctBy { it.id } else list.filter { it.id != m.id } }
+            }
+            .onFailure { error = "Root said no: ${it.message}" }
+    }
+
     fun closeProfile() { profileUserId = null }
 
-    fun togglePlugin(id: String, on: Boolean) = viewModelScope.launch { plugins = Core.setPlugin(id, on) }
+    fun togglePlugin(id: String, on: Boolean) = viewModelScope.launch(safe) { plugins = Core.setPlugin(id, on) }
 
-    fun setPluginConfig(id: String, cfg: JSONObject) = viewModelScope.launch { plugins = Core.setPluginConfig(id, cfg) }
+    fun setPluginConfig(id: String, cfg: JSONObject) = viewModelScope.launch(safe) { plugins = Core.setPluginConfig(id, cfg) }
 
     fun chooseLook(l: Look) {
         look = l
-        viewModelScope.launch { Core.setSetting("theme", l.key) }
+        viewModelScope.launch(safe) { Core.setSetting("theme", l.key) }
     }
 
     fun setColor(role: ColorRole, c: Color?) {
@@ -1211,7 +1315,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val l = look
         val o = JSONObject().apply { colorOverrides[l].orEmpty().forEach { (r, c) -> put(r.name, c.toArgb().toLong() and 0xFFFFFFFFL) } }
         saveColorsJob?.cancel()
-        saveColorsJob = viewModelScope.launch { delay(250); Core.setSetting("colors_${l.key}", o) }
+        saveColorsJob = viewModelScope.launch(safe) { delay(250); Core.setSetting("colors_${l.key}", o) }
     }
 
     private var saveBgJob: Job? = null
@@ -1219,7 +1323,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         bgShapes = b
         // sliders fire continuously; debounce the disk write
         saveBgJob?.cancel()
-        saveBgJob = viewModelScope.launch {
+        saveBgJob = viewModelScope.launch(safe) {
             delay(300)
             Core.setSetting("bg_shapes", JSONObject().put("enabled", b.enabled).put("count", b.count).put("rotate", b.rotateSpeed.toDouble())
                 .put("morph", b.morphSpeed.toDouble()).put("blur", b.blur.toDouble()).put("opacity", b.opacity.toDouble()))
@@ -1255,7 +1359,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var chatBgBlur by mutableStateOf(0f); private set
     var chatBgImage by mutableStateOf<ImageBitmap?>(null); private set
     private val bgFile get() = File(getApplication<Application>().filesDir, "chat_bg.jpg")
-    fun setChatBgImage(uri: Uri?) = viewModelScope.launch {
+    fun setChatBgImage(uri: Uri?) = viewModelScope.launch(safe) {
         if (uri == null) { withContext(Dispatchers.IO) { bgFile.delete() }; chatBgImage = null; setPref("chat_bg", "gradient"); return@launch }
         runCatching {
             chatBgImage = withContext(Dispatchers.IO) {
@@ -1287,6 +1391,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "ui_rounding" -> Ui.rounding = (value as Number).toFloat()
             "ui_msg_enter" -> Ui.messageEnter = value as String
             "ui_hide_status" -> Ui.hideStatusBar = value as Boolean
+            "ui_haptics" -> Ui.haptics = value as Boolean
             "ui_living" -> Ui.livingIcons = value as String
             "ui_bubble" -> Ui.statusBubble = value as String
             "ui_emoji" -> Ui.emojiPack = value as String
@@ -1308,20 +1413,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "chat_bg_blur" -> chatBgBlur = (value as Number).toFloat()
         }
         Clock.use12h = clock12h
-        viewModelScope.launch { Core.setSetting(key, value) }
+        viewModelScope.launch(safe) { Core.setSetting(key, value) }
     }
     fun saveKlipyKey(k: String) {
         klipyKey = k
-        viewModelScope.launch { Core.setSetting("klipy_key", k.trim().ifEmpty { null }) }
+        viewModelScope.launch(safe) { Core.setSetting("klipy_key", k.trim().ifEmpty { null }) }
     }
 
     fun chooseAmoled(on: Boolean) {
         amoled = on
-        viewModelScope.launch { Core.setSetting("amoled", on) }
+        viewModelScope.launch(safe) { Core.setSetting("amoled", on) }
     }
 
     /** Decodes, centre-crops and downsizes the picked image to 256px, then stores it privately. */
-    fun setAvatar(uri: Uri?) = viewModelScope.launch {
+    fun setAvatar(uri: Uri?) = viewModelScope.launch(safe) {
         if (uri == null) {
             withContext(Dispatchers.IO) { avatarFile.delete() }
             myAvatar = null

@@ -248,12 +248,28 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 - [~] Full-screen call view (blurred drifting backdrop of the other person, big living-shape portrait or group grid, your own preview tile, labelled glass dock) + floating call pill anywhere in the app; old in-chat stage now only the pre-join card
 - [x] Step-by-step call trace in Logs & crashes (join, ICE servers, session, mic, subscriptions, ICE/connection states, failures)
 - [ ] Live call test (joining an empty voice channel) — not run yet: phone was in use
-- [ ] Now playing: Root rejects the status with error 300 (too long with the hidden part) — needs a shorter encoding / budget
+- [~] Now playing: Root rejects the status with error 300 (too long with the hidden part) — fixed in round 25, needs a live check
 
 ## 24. Ghost overlap, for real (2026-11-17)
 - [x] Opening a chat cleared the list without counting as a swap, so the previous messages faded out in place under the new ones (4h-old messages over new ones, fading video preview). Clearing now bumps the swap epoch, each chat gets its own list (key per chat), and messages never fade out over others (fadeOutSpec null)
 
+## 25. Root 0.9.46 update + audit (2026-11-25)
+Root updated on the phone (0.9.46, OTA bundle 2026-11-25); schema re-extracted (`tools/`: 950 messages, 263 RPCs).
+- [~] Root moved bios/banners out of user lists (`UserResponse` lost fields 16/17) → profiles now load them from the new `User/Get` (also for yourself); list refreshes keep known bios instead of blanking them
+- [~] Root cosmetics: name effects (gradient/colour names in chat, pins, profile — drifting on the profile), profile backgrounds, list of worn cosmetics; live packets 261/262 update them. Unit-tested decoding
+- [ ] Cosmetic avatar frames / card borders / name fonts: need Root's art bundles (`UserCosmetic/GetBundlesByIds`, manifest format unverified)
+- [~] Pinned messages: overflow ⋮ → Pinned messages (tap to jump, × to unpin); long-press → Pin / Unpin (Root's MessageGrpcService/Pin*)
+- [~] Jump to… quick switcher (DMs, groups, channels, communities; unread first)
+- [~] Drafts per chat (kept across restarts, "Draft:" in the DM list)
+- [~] Frequently used emoji ("Recent" tab, also counts reactions)
+- [~] Haptics: send, react, long-press; Customize → Screen → Haptics toggles every haptic in the app
+- [~] Per-person call volume (tap someone in a call, 0–200 %, remembered)
+- [~] Now playing: denser hidden encoding (4 bits/char), status kept ≤ 128 chars, retries smaller if Root rejects (old format still decoded; 6 unit tests)
+- [x] Fixes: core calls ran on the CPU thread pool (now IO); failed Root calls inside coroutines could crash the app (react/delete etc.; now a toast + log); mention detection differed between highlight / notification / Mentions tab (now one rule: real name, username, display name, replies incl. multi-reply, @everyone); signing out left DMs, mentions, notifications, roles etc. from the old account in memory; taps landed on messages while the chat was still sliding in (the "tapping a channel opened a profile" bug); upload connections never closed; version strings were 0.1.0 / 0.3.0 / 0.3.6 in different places (now all 0.4.0 from one source)
+- [ ] Known limit: one lock around the whole core, held during network calls — a slow request delays everything else (needs a bigger refactor)
+- [x] Built + installed v0.4.0; starts cleanly. Not yet exercised against the live server (Bloom had been wiped from the phone, needs signing in again)
+
 ## Known bugs to check
 - [ ] Password field possibly cleared after tapping the eye (seen twice while the user was also using the phone)
-- [ ] Tapping a channel once opened a message author's profile instead
+- [~] Tapping a channel once opened a message author's profile instead (taps are now blocked while the chat slides in)
 - [ ] "Members" count shows only the signed-in user (now shows channel count instead; not installed yet)

@@ -25,6 +25,8 @@ pub enum Event {
     Ring { channel_id: Id, caller_id: Id },
     /// Someone declined a call you started.
     RingDeclined { channel_id: Id, user_id: Id },
+    /// A profile changed (cosmetics, ...): the full updated user.
+    User(User),
 }
 
 pub trait Backend: Send {
@@ -217,6 +219,7 @@ impl MockBackend {
                     banner_url: None,
                     status_text: String::new(),
                 bot: false,
+                cosmetic: Default::default(),
                 },
             );
         }

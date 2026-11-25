@@ -61,6 +61,25 @@ class VoiceManager(private val app: Context) {
     var myId: Long = 0
     var myLevel by mutableStateOf(0f); private set
 
+    /** Per-person playback volume (0 = silent, 1 = normal, up to 2 = boosted); remembered across calls. */
+    val userVolume = mutableStateMapOf<Long, Float>().apply {
+        app.getSharedPreferences("voice", Context.MODE_PRIVATE).all.forEach { (k, v) -> k.removePrefix("vol_").toLongOrNull()?.let { id -> (v as? Float)?.let { put(id, it) } } }
+    }
+    fun setUserVolume(user: Long, v: Float) {
+        val vol = v.coerceIn(0f, 2f)
+        if (vol == 1f) userVolume.remove(user) else userVolume[user] = vol
+        app.getSharedPreferences("voice", Context.MODE_PRIVATE).edit().apply { if (vol == 1f) remove("vol_$user") else putFloat("vol_$user", vol) }.apply()
+        applyVolumes()
+    }
+    /** WebRTC's AudioTrack volume is a gain (0..10); 1 = as received. */
+    private fun applyVolumes() {
+        pc?.transceivers?.forEach { t ->
+            val track = t.receiver.track() as? AudioTrack ?: return@forEach
+            val user = t.mid?.let { midToTrack[it] }?.let { trackToUser[it] } ?: return@forEach
+            runCatching { track.setVolume((userVolume[user] ?: 1f).toDouble()) }
+        }
+    }
+
     val egl: EglBase by lazy { EglBase.create() }
     private var factory: PeerConnectionFactory? = null
     private var pc: PeerConnection? = null
@@ -335,7 +354,10 @@ class VoiceManager(private val app: Context) {
             val mid = t.mid ?: return
             val id = midToTrack[mid] ?: return
             if (track is VideoTrack) videoTracks[id] = track
-            if (track is AudioTrack) track.setEnabled(!deafened)
+            if (track is AudioTrack) {
+                track.setEnabled(!deafened)
+                trackToUser[id]?.let { u -> userVolume[u]?.let { runCatching { track.setVolume(it.toDouble()) } } }
+            }
         }
         override fun onIceConnectionChange(s: PeerConnection.IceConnectionState) {
             trace("ice: $s")

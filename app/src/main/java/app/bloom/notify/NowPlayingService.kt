@@ -98,10 +98,18 @@ class NowPlayingService : NotificationListenerService() {
         if (wait > 0) delay(wait)
         val me = runCatching { Core.me() }.getOrNull() ?: return
         val clean = Hidden.strip(me.statusTextRaw)
-        val status = if (np == null) clean else clean + Hidden.encode(np)
-        val ok = runCatching { Core.editProfile(JSONObject().put("status", status)) }.isSuccess
+        // Root rejects statuses that are too long (error 300): shrink the hidden part and retry
+        var ok = false
+        var lastErr: String? = null
+        for (limit in intArrayOf(Hidden.STATUS_LIMIT, 96, 64)) {
+            val status = if (np == null) clean else clean + Hidden.encode(np, clean, limit)
+            val r = runCatching { Core.editProfile(JSONObject().put("status", status)) }
+            if (r.isSuccess) { ok = true; break }
+            lastErr = r.exceptionOrNull()?.message
+            if (np == null || lastErr?.contains("rejected") != true) break
+        }
         if (ok) { published = np; lastPublish = System.currentTimeMillis() }
-        else runCatching { Core.log("now_playing", "status update failed") }
+        else runCatching { Core.log("now_playing", "status update failed: $lastErr") }
     }
 
     companion object {

@@ -555,7 +555,7 @@
    "name": "passkeys",
    "no": 1,
    "repeat": 1,
-   "type": "AppOrganizationUuid"
+   "type": "CommunityMemberRoleUuid"
   }
  ],
  "connect.MnemonicIdentifier": [
@@ -1755,6 +1755,45 @@
    "type": "uint32"
   }
  ],
+ "root.AppStoreFlagRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "context",
+   "no": 1,
+   "type": "RootContext"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 4,
+   "options": null,
+   "type": "AppUuid"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "reason",
+   "no": 5,
+   "type": "ContentFlagReason"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "app_flag_property",
+   "no": 6,
+   "type": "AppFlagProperty"
+  },
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "remarks",
+   "no": 7,
+   "type": "string"
+  }
+ ],
+ "root.AppStoreFlagResponse": [],
  "root.AppStoreGetGlobalSettingsRequest": [
   {
    "T": null,
@@ -1847,6 +1886,13 @@
    "name": "after_app_id",
    "no": 9,
    "type": "AppUuid"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "price_filter",
+   "no": 11,
+   "type": "AppStorePriceFilter"
   }
  ],
  "root.AppStoreListResponse": [
@@ -2023,6 +2069,13 @@
    "name": "community_id",
    "no": 8,
    "type": "CommunityUuid"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "price_filter",
+   "no": 10,
+   "type": "AppStorePriceFilter"
   }
  ],
  "root.AppStoreSearchResponse": [
@@ -6536,6 +6589,13 @@
    "no": 10,
    "options": null,
    "type": "CommunityUuid"
+  },
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "proof_token",
+   "no": 11,
+   "type": "string"
   }
  ],
  "root.CommunityDeleteResponse": [],
@@ -10349,20 +10409,6 @@
   {
    "T": null,
    "kind": "message",
-   "name": "banner_asset_uri",
-   "no": 14,
-   "type": "StringValue"
-  },
-  {
-   "T": null,
-   "kind": "message",
-   "name": "description",
-   "no": 15,
-   "type": "StringValue"
-  },
-  {
-   "T": null,
-   "kind": "message",
    "name": "user_defined_status",
    "no": 16,
    "type": "StringValue"
@@ -10396,6 +10442,14 @@
    "name": "joined_at",
    "no": 20,
    "type": "Timestamp"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "active_visible_cosmetics",
+   "no": 21,
+   "repeat": 1,
+   "type": "UserActiveVisibleCosmetic"
   }
  ],
  "root.CommunityMemberSetAgeVerifiedRequest": [
@@ -14328,6 +14382,32 @@
    "type": "fixed64"
   }
  ],
+ "root.LinkAppCreateRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "context",
+   "no": 1,
+   "type": "RootContext"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "app_id",
+   "no": 10,
+   "options": null,
+   "type": "AppUuid"
+  }
+ ],
+ "root.LinkAppCreateResponse": [
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "url",
+   "no": 10,
+   "type": "string"
+  }
+ ],
  "root.LinkCommunityAppCreateRequest": [
   {
    "T": null,
@@ -14826,30 +14906,38 @@
  ],
  "root.MessageListRequest": [
   {
+   "T": null,
    "kind": "message",
    "name": "container_id",
    "no": 10,
+   "options": null,
    "type": "MessageContainerUuid"
   },
   {
+   "T": null,
    "kind": "message",
    "name": "community_id",
    "no": 11,
    "type": "CommunityUuid"
   },
   {
-   "kind": "scalar",
+   "T": null,
+   "kind": "enum",
    "name": "message_direction_take",
    "no": 12,
-   "type": "int32"
+   "options": null,
+   "type": "MessageDirectionTake"
   },
   {
+   "T": null,
    "kind": "message",
    "name": "date_at",
    "no": 13,
+   "options": null,
    "type": "Timestamp"
   },
   {
+   "T": null,
    "kind": "message",
    "name": "limit",
    "no": 15,
@@ -18059,6 +18147,23 @@
    "type": "UploadStatusExceptionPayload"
   }
  ],
+ "root.UserActiveCosmetics": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "cosmetics",
+   "no": 1,
+   "repeat": 1,
+   "type": "UserCosmetic"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "profile_background",
+   "no": 2,
+   "type": "UserCosmeticFill"
+  }
+ ],
  "root.UserActiveTheme": [
   {
    "T": null,
@@ -18075,6 +18180,38 @@
    "no": 2,
    "oneof": "theme",
    "type": "UserCustomThemeUuid"
+  }
+ ],
+ "root.UserActiveVisibleCosmetic": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 1,
+   "type": "UserCosmeticUuid"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "type",
+   "no": 2,
+   "type": "UserCosmeticType"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "name_font",
+   "no": 12,
+   "oneof": "metadata",
+   "type": "UserCosmeticNameFontMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "name_effect",
+   "no": 13,
+   "oneof": "metadata",
+   "type": "UserCosmeticNameEffectMetadata"
   }
  ],
  "root.UserAuthenticationMethods": [
@@ -18275,6 +18412,575 @@
    "type": "CommunityUuid"
   }
  ],
+ "root.UserCosmetic": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 1,
+   "type": "UserCosmeticUuid"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "type",
+   "no": 2,
+   "type": "UserCosmeticType"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "created_at",
+   "no": 3,
+   "type": "Timestamp"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "title",
+   "no": 4,
+   "type": "StringValue"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "description",
+   "no": 5,
+   "type": "StringValue"
+  },
+  {
+   "T": 8,
+   "kind": "scalar",
+   "name": "is_favorite",
+   "no": 6,
+   "type": "bool"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "avatar_frame",
+   "no": 10,
+   "oneof": "metadata",
+   "type": "UserCosmeticAvatarFrameMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "card_border",
+   "no": 11,
+   "oneof": "metadata",
+   "type": "UserCosmeticCardBorderMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "name_font",
+   "no": 12,
+   "oneof": "metadata",
+   "type": "UserCosmeticNameFontMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "name_effect",
+   "no": 13,
+   "oneof": "metadata",
+   "type": "UserCosmeticNameEffectMetadata"
+  }
+ ],
+ "root.UserCosmeticAvatarFrameMetadata": [],
+ "root.UserCosmeticBundle": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 10,
+   "type": "UserCosmeticUuid"
+  },
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "url",
+   "no": 11,
+   "type": "string"
+  }
+ ],
+ "root.UserCosmeticCardBorderMetadata": [],
+ "root.UserCosmeticClaimRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "context",
+   "no": 1,
+   "type": "RootContext"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 10,
+   "type": "UserCosmeticUuid"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "code",
+   "no": 11,
+   "type": "StringValue"
+  }
+ ],
+ "root.UserCosmeticClaimResponse": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 10,
+   "type": "UserCosmeticUuid"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "created_at",
+   "no": 11,
+   "type": "Timestamp"
+  }
+ ],
+ "root.UserCosmeticFill": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "color",
+   "no": 1,
+   "oneof": "value",
+   "type": "RootColor"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "gradient",
+   "no": 2,
+   "oneof": "value",
+   "type": "UserCosmeticGradient"
+  }
+ ],
+ "root.UserCosmeticGetBundleRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 10,
+   "options": null,
+   "type": "UserCosmeticUuid"
+  }
+ ],
+ "root.UserCosmeticGetBundleResponse": [
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "url",
+   "no": 10,
+   "type": "string"
+  }
+ ],
+ "root.UserCosmeticGetBundlesByIdsRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "ids",
+   "no": 10,
+   "options": null,
+   "repeat": 1,
+   "type": "UserCosmeticUuid"
+  }
+ ],
+ "root.UserCosmeticGetBundlesByIdsResponse": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "bundles",
+   "no": 10,
+   "repeat": 1,
+   "type": "UserCosmeticBundle"
+  }
+ ],
+ "root.UserCosmeticGradient": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "stops",
+   "no": 1,
+   "repeat": 1,
+   "type": "UserCosmeticGradientStop"
+  },
+  {
+   "T": 1,
+   "kind": "scalar",
+   "name": "angle",
+   "no": 2,
+   "type": "double"
+  }
+ ],
+ "root.UserCosmeticGradientStop": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "color",
+   "no": 1,
+   "type": "RootColor"
+  }
+ ],
+ "root.UserCosmeticListByUserRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "user_id",
+   "no": 10,
+   "options": null,
+   "type": "UserUuid"
+  },
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "language_code",
+   "no": 11,
+   "type": "string"
+  }
+ ],
+ "root.UserCosmeticListByUserResponse": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "cosmetics",
+   "no": 10,
+   "repeat": 1,
+   "type": "UserCosmetic"
+  }
+ ],
+ "root.UserCosmeticListItem": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 1,
+   "type": "UserCosmeticUuid"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "type",
+   "no": 2,
+   "type": "UserCosmeticType"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "title",
+   "no": 3,
+   "type": "StringValue"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "description",
+   "no": 4,
+   "type": "StringValue"
+  },
+  {
+   "T": 8,
+   "kind": "scalar",
+   "name": "is_legacy",
+   "no": 5,
+   "type": "bool"
+  },
+  {
+   "T": 8,
+   "kind": "scalar",
+   "name": "is_owned",
+   "no": 6,
+   "type": "bool"
+  },
+  {
+   "T": 8,
+   "kind": "scalar",
+   "name": "is_obscured",
+   "no": 7,
+   "type": "bool"
+  }
+ ],
+ "root.UserCosmeticListRequest": [
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "language_code",
+   "no": 10,
+   "type": "string"
+  }
+ ],
+ "root.UserCosmeticListResponse": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "cosmetics",
+   "no": 10,
+   "repeat": 1,
+   "type": "UserCosmeticListItem"
+  }
+ ],
+ "root.UserCosmeticNameEffectMetadata": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "fills",
+   "no": 1,
+   "repeat": 1,
+   "type": "UserCosmeticFill"
+  }
+ ],
+ "root.UserCosmeticNameFontMetadata": [],
+ "root.UserCosmeticSetActivePacket": [
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "packet_type",
+   "no": 1,
+   "type": "PacketType"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "user_id",
+   "no": 2,
+   "type": "UserUuid"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "type",
+   "no": 3,
+   "type": "UserCosmeticType"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 4,
+   "type": "UserCosmeticUuid"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "avatar_frame",
+   "no": 10,
+   "oneof": "metadata",
+   "type": "UserCosmeticAvatarFrameMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "card_border",
+   "no": 11,
+   "oneof": "metadata",
+   "type": "UserCosmeticCardBorderMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "name_font",
+   "no": 12,
+   "oneof": "metadata",
+   "type": "UserCosmeticNameFontMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "name_effect",
+   "no": 13,
+   "oneof": "metadata",
+   "type": "UserCosmeticNameEffectMetadata"
+  }
+ ],
+ "root.UserCosmeticSetActiveRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "context",
+   "no": 1,
+   "type": "RootContext"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "type",
+   "no": 10,
+   "type": "UserCosmeticType"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 11,
+   "type": "UserCosmeticUuid"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "avatar_frame",
+   "no": 20,
+   "oneof": "metadata",
+   "type": "UserCosmeticAvatarFrameMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "card_border",
+   "no": 21,
+   "oneof": "metadata",
+   "type": "UserCosmeticCardBorderMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "name_font",
+   "no": 22,
+   "oneof": "metadata",
+   "type": "UserCosmeticNameFontMetadata"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "name_effect",
+   "no": 23,
+   "oneof": "metadata",
+   "type": "UserCosmeticNameEffectMetadata"
+  }
+ ],
+ "root.UserCosmeticSetActiveResponse": [],
+ "root.UserCosmeticSetActiveVisiblePacket": [
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "packet_type",
+   "no": 1,
+   "type": "PacketType"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "user_id",
+   "no": 2,
+   "type": "UserUuid"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "active_visible_cosmetics",
+   "no": 3,
+   "repeat": 1,
+   "type": "UserActiveVisibleCosmetic"
+  }
+ ],
+ "root.UserCosmeticSetFavoriteRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "context",
+   "no": 1,
+   "type": "RootContext"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "id",
+   "no": 10,
+   "options": null,
+   "type": "UserCosmeticUuid"
+  },
+  {
+   "T": 8,
+   "kind": "scalar",
+   "name": "is_favorite",
+   "no": 11,
+   "type": "bool"
+  }
+ ],
+ "root.UserCosmeticSetFavoriteResponse": [],
+ "root.UserCosmeticSetProfileBackgroundPacket": [
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "packet_type",
+   "no": 1,
+   "type": "PacketType"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "user_id",
+   "no": 2,
+   "type": "UserUuid"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "profile_background",
+   "no": 3,
+   "type": "UserCosmeticFill"
+  }
+ ],
+ "root.UserCosmeticSetProfileBackgroundRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "context",
+   "no": 1,
+   "type": "RootContext"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "profile_background",
+   "no": 10,
+   "type": "UserCosmeticFill"
+  }
+ ],
+ "root.UserCosmeticSetProfileBackgroundResponse": [],
+ "root.UserCosmeticSyncRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "context",
+   "no": 1,
+   "type": "RootContext"
+  }
+ ],
+ "root.UserCosmeticSyncResponse": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "ids",
+   "no": 10,
+   "repeat": 1,
+   "type": "UserCosmeticUuid"
+  }
+ ],
+ "root.UserCosmeticUuid": [
+  {
+   "L": 0,
+   "T": 6,
+   "kind": "scalar",
+   "name": "high64",
+   "no": 1,
+   "type": "fixed64"
+  },
+  {
+   "L": 0,
+   "T": 6,
+   "kind": "scalar",
+   "name": "low64",
+   "no": 2,
+   "type": "fixed64"
+  }
+ ],
  "root.UserCustomTheme": [
   {
    "T": null,
@@ -18302,7 +19008,7 @@
    "kind": "message",
    "name": "color_overrides",
    "no": 4,
-   "type": "UserGetNewHubserverRequest"
+   "type": "UserCosmeticGradient"
   },
   {
    "T": null,
@@ -18727,7 +19433,106 @@
    "type": "UserUuid"
   }
  ],
- "root.UserGetSelfRequest": [],
+ "root.UserGetRequest": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "user_id",
+   "no": 10,
+   "options": null,
+   "type": "UserUuid"
+  },
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "language_code",
+   "no": 11,
+   "type": "string"
+  }
+ ],
+ "root.UserGetResponse": [
+  {
+   "T": null,
+   "kind": "message",
+   "name": "user_id",
+   "no": 10,
+   "options": null,
+   "type": "UserUuid"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "profile_picture_asset_uri",
+   "no": 11,
+   "type": "StringValue"
+  },
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "username",
+   "no": 12,
+   "type": "string"
+  },
+  {
+   "T": null,
+   "kind": "enum",
+   "name": "online_status",
+   "no": 13,
+   "type": "UserOnlineStatus"
+  },
+  {
+   "T": 8,
+   "kind": "scalar",
+   "name": "is_deleted",
+   "no": 14,
+   "type": "bool"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "badges",
+   "no": 15,
+   "repeat": 1,
+   "type": "UserBadge"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "description",
+   "no": 16,
+   "type": "StringValue"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "banner_asset_uri",
+   "no": 17,
+   "type": "StringValue"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "user_defined_status",
+   "no": 18,
+   "type": "StringValue"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "active_cosmetics",
+   "no": 19,
+   "type": "UserActiveCosmetics"
+  }
+ ],
+ "root.UserGetSelfRequest": [
+  {
+   "T": 9,
+   "kind": "scalar",
+   "name": "language_code",
+   "no": 10,
+   "type": "string"
+  }
+ ],
  "root.UserListResponse": [
   {
    "T": null,
@@ -18884,23 +19689,17 @@
   {
    "T": null,
    "kind": "message",
-   "name": "description",
-   "no": 16,
-   "type": "StringValue"
-  },
-  {
-   "T": null,
-   "kind": "message",
-   "name": "banner_asset_uri",
-   "no": 17,
-   "type": "StringValue"
-  },
-  {
-   "T": null,
-   "kind": "message",
    "name": "user_defined_status",
    "no": 18,
    "type": "StringValue"
+  },
+  {
+   "T": null,
+   "kind": "message",
+   "name": "active_visible_cosmetics",
+   "no": 19,
+   "repeat": 1,
+   "type": "UserActiveVisibleCosmetic"
   }
  ],
  "root.UserSelfResponse": [
@@ -20158,7 +20957,7 @@
    "kind": "message",
    "name": "colors",
    "no": 3,
-   "type": "UserGetNewHubserverRequest"
+   "type": "UserCosmeticGradient"
   },
   {
    "T": null,
@@ -21210,7 +22009,7 @@
    "name": "tracks",
    "no": 12,
    "repeat": 1,
-   "type": "UserActiveTheme"
+   "type": "UserShortListResponse"
   },
   {
    "T": null,

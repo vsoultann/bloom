@@ -45,6 +45,29 @@ pub struct User {
     /// Root Bot (author id is an App GUID).
     #[serde(default)]
     pub bot: bool,
+    /// Root cosmetics (name effect, profile background, what they own/wear).
+    #[serde(default)]
+    pub cosmetic: Cosmetic,
+}
+
+/// A solid colour (one entry) or a gradient, as ARGB, plus the gradient angle in degrees.
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct Fill {
+    pub colors: Vec<u32>,
+    pub angle: f32,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct Cosmetic {
+    /// Gradient/colour their name is drawn with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<Fill>,
+    /// Profile card background.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub profile_bg: Option<Fill>,
+    /// What they wear, e.g. ["Name effect · Aurora", "Avatar frame · Halo"].
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub worn: Vec<String>,
 }
 
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, PartialEq, Eq)]

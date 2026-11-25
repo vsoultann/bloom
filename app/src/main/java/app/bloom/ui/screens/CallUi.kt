@@ -10,6 +10,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import kotlin.math.roundToInt
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -206,11 +207,14 @@ private fun Ripples(color: Color, center: @Composable () -> Unit) {
 @Composable
 private fun LivingMember(vm: AppViewModel, m: VoiceMember) {
     val scheme = MaterialTheme.colorScheme
+    var volume by remember { mutableStateOf(false) }
+    if (volume) VolumeDialog(vm, m.userId) { volume = false }
     val u = vm.users[m.userId]
     val talking = m.level > 0.02f && !m.muted
     val level by animateFloatAsState(if (talking) m.level.coerceIn(0f, 1f) else 0f, spring(dampingRatio = 0.7f, stiffness = 500f), label = "lvl")
     val living = rememberLivingShape(seed = (m.userId % 997).toInt(), selected = !talking)
-    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(92.dp)) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.width(92.dp)
+        .then(if (m.userId != vm.me?.id) Modifier.clip(RoundedCornerShape(18.dp)).clickable { volume = true } else Modifier)) {
         Box(contentAlignment = Alignment.Center, modifier = Modifier.size(96.dp)) {
             // glow behind, sized by how loud they are
             Box(Modifier.size(80.dp).graphicsLayer { val k = 1f + 0.22f * level; scaleX = k; scaleY = k; alpha = (level * 2.2f).coerceAtMost(0.9f); shape = living.shape(); clip = true }.background(Talking))
@@ -469,10 +473,12 @@ private fun Labeled(label: String, content: @Composable () -> Unit) {
 @Composable
 private fun BigPortrait(vm: AppViewModel, m: VoiceMember) {
     val u = vm.users[m.userId]
+    var volume by remember { mutableStateOf(false) }
+    if (volume) VolumeDialog(vm, m.userId) { volume = false }
     val talking = m.level > 0.02f && !m.muted
     val level by animateFloatAsState(if (talking) m.level.coerceIn(0f, 1f) else 0f, spring(dampingRatio = 0.65f, stiffness = 420f), label = "big")
     val living = rememberLivingShape(seed = (m.userId % 997).toInt(), selected = !talking)
-    Box(Modifier.size(220.dp), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(220.dp).clip(CircleShape).clickable { volume = true }, contentAlignment = Alignment.Center) {
         Box(Modifier.size(190.dp).graphicsLayer { val k = 1f + 0.18f * level; scaleX = k; scaleY = k; alpha = (level * 2f).coerceAtMost(0.75f); shape = living.shape(); clip = true }.background(Talking))
         Box(Modifier.size(176.dp).graphicsLayer { val k = 1f + 0.05f * level; scaleX = k; scaleY = k; shape = living.shape(); clip = true }) {
             if (u != null) Avatar(u.displayName, u.hue, 176.dp, userId = u.id, shape = androidx.compose.ui.graphics.RectangleShape)
@@ -531,4 +537,29 @@ fun CallPill(vm: AppViewModel, modifier: Modifier = Modifier) {
             HangUp(36.dp) { v.leave() }
         }
     }
+}
+
+
+/** Tap someone in a call: their own volume (remembered), like Root's per-user volume. */
+@Composable
+private fun VolumeDialog(vm: AppViewModel, userId: Long, onDismiss: () -> Unit) {
+    val u = vm.users[userId]
+    val v = vm.voice.userVolume[userId] ?: 1f
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        icon = { if (u != null) Avatar(u.displayName, u.hue, 48.dp, userId = u.id) },
+        title = { Text(u?.displayName ?: "Volume") },
+        text = {
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(if (v == 0f) Icons.Rounded.VolumeOff else Icons.Rounded.VolumeUp, null)
+                    Slider(v, { vm.voice.setUserVolume(userId, (it * 20).roundToInt() / 20f) }, valueRange = 0f..2f, modifier = Modifier.weight(1f).padding(horizontal = 8.dp))
+                    Text("${(v * 100).roundToInt()}%", style = MaterialTheme.typography.labelLarge, modifier = Modifier.width(48.dp))
+                }
+                Text("Only changes how loud they are for you.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
+        dismissButton = { TextButton(onClick = { vm.voice.setUserVolume(userId, 1f) }) { Text("Reset") } },
+    )
 }

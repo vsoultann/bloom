@@ -134,6 +134,7 @@ impl App {
             }
             Event::Typing { channel_id, user_id } => json!({ "type": "typing", "channel_id": channel_id, "user_id": user_id }),
             Event::Status { user_id, status } => json!({ "type": "status", "user_id": user_id, "status": status }),
+            Event::User(u) => json!({ "type": "user", "user": u }),
             Event::DmsChanged => json!({ "type": "dms" }),
             Event::Replace(m) => {
                 if let Some(cur) = self.backend.message_mut(m.id) {

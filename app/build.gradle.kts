@@ -14,8 +14,8 @@ android {
         applicationId = (project.findProperty("bloomId") as String?) ?: "app.bloom"
         minSdk = 31          // Material You dynamic colour + RenderEffect blur
         targetSdk = 37
-        versionCode = 9
-        versionName = "0.3.6"
+        versionCode = 10
+        versionName = "0.4.0" // keep core/Cargo.toml's version in step
         ndk { abiFilters += "arm64-v8a" }
     }
 
@@ -44,7 +44,7 @@ android {
             signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
     packaging { jniLibs { useLegacyPackaging = false } }
 }
 
@@ -67,6 +67,7 @@ val cargoBuild = tasks.register<Exec>("cargoBuild") {
 tasks.named("preBuild") { dependsOn(cargoBuild) }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     val bom = platform("androidx.compose:compose-bom:2026.09.00")
     implementation(bom)
     implementation("androidx.compose.ui:ui")

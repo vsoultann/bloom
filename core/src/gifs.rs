@@ -11,7 +11,7 @@ pub fn search(key: &str, query: &str) -> Result<Value, String> {
     } else {
         format!("{base}/search?q={}&page=1&per_page=30&customer_id=bloom", urlencode(query))
     };
-    let body: Value = match ureq::get(&url).set("user-agent", "Bloom/0.1.0 (Android)").call() {
+    let body: Value = match ureq::get(&url).set("user-agent", crate::rootapi::USER_AGENT).call() {
         Ok(r) => serde_json::from_str(&r.into_string().map_err(|e| e.to_string())?).map_err(|e| e.to_string())?,
         Err(ureq::Error::Status(401 | 403, _)) => return Err("Your GIF API key was rejected".into()),
         Err(e) => return Err(format!("GIF search failed: {e}")),

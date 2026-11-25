@@ -484,6 +484,7 @@ private fun ScreenSection(vm: AppViewModel) {
     Spacer(Modifier.height(10.dp))
     SectionHeader("Screen")
     ToggleCard("Hide status bar", "Full-screen look (swipe down from the top to peek)", Ui.hideStatusBar) { vm.setPref("ui_hide_status", it) }
+    ToggleCard("Haptics", "Little vibrations when you send, react, long-press and swipe", Ui.haptics) { vm.setPref("ui_haptics", it) }
 }
 
 @Composable

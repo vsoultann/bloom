@@ -98,6 +98,11 @@
    "in": "AppStoreListShortRequest",
    "method": "ListShort",
    "out": "AppStoreListShortResponse"
+  },
+  {
+   "in": "AppStoreFlagRequest",
+   "method": "Flag",
+   "out": "AppStoreFlagResponse"
   }
  ],
  "root.AssetGrpcService": [
@@ -894,6 +899,11 @@
    "in": "LinkCommunityAppCreateRequest",
    "method": "CommunityAppCreate",
    "out": "LinkCommunityAppCreateResponse"
+  },
+  {
+   "in": "LinkAppCreateRequest",
+   "method": "AppCreate",
+   "out": "LinkAppCreateResponse"
   }
  ],
  "root.NotificationGrpcService": [
@@ -940,6 +950,53 @@
    "out": "SupportCreateResponse"
   }
  ],
+ "root.UserCosmeticGrpcService": [
+  {
+   "in": "UserCosmeticListRequest",
+   "method": "List",
+   "out": "UserCosmeticListResponse"
+  },
+  {
+   "in": "UserCosmeticListByUserRequest",
+   "method": "ListByUser",
+   "out": "UserCosmeticListByUserResponse"
+  },
+  {
+   "in": "UserCosmeticClaimRequest",
+   "method": "Claim",
+   "out": "UserCosmeticClaimResponse"
+  },
+  {
+   "in": "UserCosmeticSyncRequest",
+   "method": "Sync",
+   "out": "UserCosmeticSyncResponse"
+  },
+  {
+   "in": "UserCosmeticSetActiveRequest",
+   "method": "SetActive",
+   "out": "UserCosmeticSetActiveResponse"
+  },
+  {
+   "in": "UserCosmeticSetFavoriteRequest",
+   "method": "SetFavorite",
+   "out": "UserCosmeticSetFavoriteResponse"
+  },
+  {
+   "in": "UserCosmeticSetProfileBackgroundRequest",
+   "method": "SetProfileBackground",
+   "out": "UserCosmeticSetProfileBackgroundResponse"
+  },
+  {
+   "in": "UserCosmeticGetBundleRequest",
+   "method": "GetBundle",
+   "out": "UserCosmeticGetBundleResponse"
+  },
+  {
+   "in": "UserCosmeticGetBundlesByIdsRequest",
+   "method": "GetBundlesByIds",
+   "out": "UserCosmeticGetBundlesByIdsResponse"
+  }
+ ],
  "root.UserFavoriteGifGrpcService": [
   {
    "in": "UserFavoriteGifListRequest",
@@ -962,6 +1019,11 @@
    "in": "UserGetSelfRequest",
    "method": "GetSelf",
    "out": "UserSelfResponse"
+  },
+  {
+   "in": "UserGetRequest",
+   "method": "Get",
+   "out": "UserGetResponse"
   },
   {
    "in": "UserGetExtendedUsersByIdRequest",

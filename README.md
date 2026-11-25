@@ -37,7 +37,9 @@ Bloom talks to Root's own servers, so you use your normal Root account, servers,
 - Markdown: **bold**, *italic*, __underline__, ~~strike~~, `||spoilers||`, headings, quotes, code
 - Photos, videos (HLS), voice messages, GIFs, files — media keeps its real shape, uploads show progress
 - Start-of-chat intros, date dividers, mention highlighting, jump-to-reply, jumbo emoji
-- Voice messages in Root's own format (with waveform), DM and group calls
+- **Pinned messages** (view, pin, unpin), a **Jump to…** quick switcher, per-chat **drafts**, frequently used emoji
+- Root **cosmetics**: gradient name effects and profile backgrounds (Root 0.9.46)
+- Voice messages in Root's own format (with waveform), DM and group calls, per-person call volume
 
 **People**
 - Profiles with bios rendered like messages, banners, mutual servers & friends, an animated status bubble and a now-playing card
@@ -56,7 +58,7 @@ Bloom talks to Root's own servers, so you use your normal Root account, servers,
 - Corner rounding, animation speed (0.5×–2×) or off, message entrance (rise / blur-in / fade), element blur, frosted glass strength
 - Fonts: system, 10 Google Fonts, or import your own TTF/OTF — whole app or messages only, weight and spacing
 - Emoji packs: System, Apple, Windows 11 (Fluent), Google, Twitter, Facebook
-- Living (morphing) server icons, chat backgrounds, hide status bar
+- Living (morphing) server icons, chat backgrounds, hide status bar, haptics on/off
 - Runs at your screen's highest refresh rate; steps down automatically in battery saver
 
 **Plugins** (Vencord-style, all optional)

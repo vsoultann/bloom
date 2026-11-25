@@ -28,6 +28,12 @@ data class User(
     val statusTextRaw: String = "",
     /** what they're listening to, if they use Bloom and share it */
     val nowPlaying: app.bloom.notify.NowPlaying? = null,
+    /** Root cosmetics: name effect colours/gradient */
+    val nameFill: Fill? = null,
+    /** Root cosmetics: profile card background */
+    val profileBg: Fill? = null,
+    /** Root cosmetics they wear ("Name effect · Aurora", ...) */
+    val worn: List<String> = emptyList(),
 ) {
     companion object {
         fun from(o: JSONObject) = User(
@@ -46,7 +52,23 @@ data class User(
             statusTextRaw = o.optString("status_text", ""),
             nowPlaying = app.bloom.notify.Hidden.decode(o.optString("status_text", "")),
             bot = o.optBoolean("bot", false),
+            nameFill = o.optJSONObject("cosmetic")?.optJSONObject("name")?.let(Fill::from),
+            profileBg = o.optJSONObject("cosmetic")?.optJSONObject("profile_bg")?.let(Fill::from),
+            worn = o.optJSONObject("cosmetic")?.optJSONArray("worn")?.strings().orEmpty(),
         )
+    }
+}
+
+/** A Root cosmetic fill: one colour, or a gradient at [angle] degrees. Colours are ARGB. */
+@Immutable
+data class Fill(val colors: List<Int>, val angle: Float) {
+    val solid get() = colors.size == 1
+    companion object {
+        fun from(o: JSONObject): Fill? {
+            val a = o.optJSONArray("colors") ?: return null
+            val c = (0 until a.length()).map { a.getLong(it).toInt() }
+            return if (c.isEmpty()) null else Fill(c, o.optDouble("angle", 0.0).toFloat())
+        }
     }
 }
 
@@ -192,6 +214,7 @@ sealed interface Event {
     data class VoiceLeft(val channelId: Long, val userId: Long) : Event
     data class Ring(val channelId: Long, val callerId: Long) : Event
     data class RingDeclined(val channelId: Long, val userId: Long) : Event
+    data class UserChanged(val user: User) : Event
     data object Unknown : Event
 
     companion object {
@@ -205,6 +228,7 @@ sealed interface Event {
             "voice_left" -> VoiceLeft(o.getLong("channel_id"), o.getLong("user_id"))
             "ring" -> Ring(o.getLong("channel_id"), o.getLong("caller_id"))
             "ring_declined" -> RingDeclined(o.getLong("channel_id"), o.getLong("user_id"))
+            "user" -> UserChanged(User.from(o.getJSONObject("user")))
             // only real typing events are typing; anything new is ignored instead of
             // throwing and taking the rest of the batch down with it
             "typing" -> Typing(o.getLong("channel_id"), o.getLong("user_id"))

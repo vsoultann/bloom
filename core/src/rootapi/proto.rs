@@ -655,6 +655,9 @@ pub struct UserResponse {
     pub banner_asset_uri: Option<StringValue>,
     #[prost(message, optional, tag = "18")]
     pub user_defined_status: Option<StringValue>,
+    /// Root 0.9.46+: cosmetics everyone sees (name effect, ...). Added by hand (see rootapi/cosmetics.rs).
+    #[prost(message, repeated, tag = "19")]
+    pub active_visible_cosmetics: Vec<super::cosmetics::ActiveVisibleCosmetic>,
 }
 
 #[derive(Clone, PartialEq, ::prost::Message)]

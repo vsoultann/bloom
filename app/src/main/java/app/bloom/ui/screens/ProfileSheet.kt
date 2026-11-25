@@ -142,11 +142,17 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
     val avatarShape = if (living) MorphShape(BloomShapes.morph(BloomShapes.sunny, BloomShapes.circle), morphP.coerceIn(0f, 1f), rotation = (1 - morphP) * 45f)
         else androidx.compose.foundation.shape.CircleShape
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
+    // Root profile background cosmetic: tints the whole card, fading into the sheet
+    val bg = u.profileBg?.let { f -> f.colors.map { androidx.compose.ui.graphics.Color(it) } }
+    Column(
+        Modifier.fillMaxSize()
+            .then(if (bg != null) Modifier.background(Brush.verticalGradient(listOf(bg.first().copy(alpha = 0.55f), (bg.getOrNull(1) ?: bg.first()).copy(alpha = 0.22f), androidx.compose.ui.graphics.Color.Transparent))) else Modifier)
+            .verticalScroll(rememberScrollState()),
+    ) {
         Box(Modifier.fillMaxWidth().height(150.dp)) {
             Box(
                 Modifier.fillMaxSize()
-                    .background(Brush.linearGradient(listOf(accent, hueColor(u.hue + 50, tone = 0.42f)))),
+                    .background(app.bloom.ui.components.fillBrush(u.profileBg) ?: Brush.linearGradient(listOf(accent, hueColor(u.hue + 50, tone = 0.42f)))),
             )
             if (u.bannerUrl != null) coil3.compose.AsyncImage(u.bannerUrl, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             Box(Modifier.align(Alignment.TopCenter).padding(top = 10.dp).size(40.dp, 5.dp).clip(RoundedCornerShape(50)).background(scheme.onSurface.copy(alpha = 0.3f)))
@@ -169,7 +175,7 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
         }
         Column(Modifier.padding(horizontal = 20.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(u.displayName, style = MaterialTheme.typography.headlineSmall)
+                app.bloom.ui.components.UserNameText(u, MaterialTheme.typography.headlineSmall, scheme.onSurface, Modifier.weight(1f, fill = false), animated = true)
                 if (u.bot) { Spacer(Modifier.width(8.dp)); BotBadge() }
                 Spacer(Modifier.width(8.dp))
                 if (vm.plugin("platform_indicators")) PlatformIcons(u.platforms)
@@ -178,6 +184,10 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
                 listOf("@${u.name}", u.pronouns).filter { it.isNotBlank() }.joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
             )
+            if (u.worn.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                app.bloom.ui.components.WornCosmetics(u.worn)
+            }
             // roles in the server you're looking at
             vm.selectedServerId?.let { sid -> if (vm.authMode == app.bloom.core.AuthMode.ROOT) MemberRolesRow(vm, sid, u.id) }
             u.nowPlaying?.let { np ->

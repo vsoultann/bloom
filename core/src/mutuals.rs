@@ -61,6 +61,7 @@ mod tests {
             banner_url: None,
             status_text: String::new(),
                 bot: false,
+                cosmetic: Default::default(),
         }
     }
 

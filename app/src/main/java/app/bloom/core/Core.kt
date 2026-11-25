@@ -15,8 +15,10 @@ class CoreException(msg: String) : Exception(msg)
 
 /** Typed, coroutine-friendly wrapper around [Native.call]. Calls run off the main thread. */
 object Core {
+    // Calls block on network I/O inside the core, so they belong on the IO pool:
+    // on Default they could occupy every CPU thread and stall unrelated work.
     private suspend fun raw(method: String, args: JSONObject = JSONObject()): Any? =
-        withContext(Dispatchers.Default) {
+        withContext(Dispatchers.IO) {
             val res = JSONObject(Native.call(method, args.toString()))
             if (res.has("err")) throw CoreException(res.getString("err"))
             res.opt("ok")

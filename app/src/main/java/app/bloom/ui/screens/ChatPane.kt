@@ -221,6 +221,14 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
             }
         } else {
             val reversed by remember { derivedStateOf { msgs.asReversed().toList() } }
+            // jump requests from outside the list (pinned messages, search)
+            LaunchedEffect(vm.jumpTarget) {
+                val target = vm.jumpTarget ?: return@LaunchedEffect
+                val idx = reversed.indexOfFirst { it.id == target }
+                if (idx >= 0) { listState.animateScrollToItem(idx, -200); vm.flash(target) }
+                else vm.error = "That message is further back than what's loaded"
+                vm.jumpTarget = null
+            }
             val d = androidx.compose.ui.platform.LocalDensity.current
             CompositionLocalProvider(androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(d.density, d.fontScale * vm.textScale)) {
             // a fresh list per chat: nothing can animate across from the previous one
@@ -372,13 +380,26 @@ private fun TopBar(vm: AppViewModel, haze: HazeState, onMenu: () -> Unit, modifi
                 }
             }
         }
-        IconButton(onClick = { vm.screen = app.bloom.Screen.Settings }) { Icon(Icons.Rounded.Settings, "Settings") }
+        // one overflow keeps the bar uncluttered: pins, quick switcher, settings
+        var more by remember { mutableStateOf(false) }
+        var switcher by remember { mutableStateOf(false) }
+        Box {
+            IconButton(onClick = { more = true }) { Icon(Icons.Rounded.MoreVert, "More") }
+            DropdownMenu(more, onDismissRequest = { more = false }, shape = app.bloom.ui.theme.Radii.card) {
+                if (c != null && vm.authMode == app.bloom.core.AuthMode.ROOT) DropdownMenuItem({ Text("Pinned messages") }, { more = false; vm.loadPins() }, leadingIcon = { Icon(Icons.Rounded.PushPin, null) })
+                DropdownMenuItem({ Text("Jump to…") }, { more = false; switcher = true }, leadingIcon = { Icon(Icons.Rounded.Search, null) })
+                DropdownMenuItem({ Text("Settings") }, { more = false; vm.screen = app.bloom.Screen.Settings }, leadingIcon = { Icon(Icons.Rounded.Settings, null) })
+            }
+        }
+        if (switcher) QuickSwitcher(vm) { switcher = false }
+        if (vm.pins != null || vm.pinsLoading) PinsSheet(vm)
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageRow(vm: AppViewModel, m: Message, grouped: Boolean, all: List<Message>, modifier: Modifier, onJump: (Long) -> Unit = {}) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     if (m.system != null) { SystemRow(vm, m, modifier); return }
     SwipeToReply(enabled = vm.swipeReply, onReply = { vm.replyingTo = m; vm.editing = null }, modifier = modifier) {
         MessageBody(vm, m, grouped, all, Modifier, onJump)
@@ -456,6 +477,7 @@ private fun ReplyIcon(progress: () -> Float, armed: Boolean) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: List<Message>, modifier: Modifier, onJump: (Long) -> Unit) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val author = vm.users[m.authorId]
     val isMe = m.authorId == vm.me?.id
     var menu by remember { mutableStateOf(false) }
@@ -516,7 +538,7 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
                 if (flash > 0.01f) drawRect(scheme.primary.copy(alpha = 0.22f * flash))
                 if (replyingThis > 0.01f) { drawRect(scheme.tertiary.copy(alpha = 0.16f * replyingThis)); drawRect(scheme.tertiary.copy(alpha = replyingThis), size = bar) }
             }
-            .combinedClickable(onClick = {}, onLongClick = { menu = true })
+            .combinedClickable(onClick = {}, onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); menu = true })
             .padding(start = 12.dp, end = 12.dp, top = if (grouped) 1.dp else if (vm.compact) 6.dp else 10.dp, bottom = if (vm.compact) 1.dp else 2.dp),
     ) {
         ReplyPreview(vm, m, all, vm.compact, onJump)
@@ -530,10 +552,10 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
             Column(Modifier.weight(1f)) {
                 if (!grouped && author != null) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            author.displayName, style = MaterialTheme.typography.titleSmall,
-                            color = app.bloom.ui.theme.hueColor(author.hue),
-                            modifier = Modifier.clickable { vm.openProfile(author.id) },
+                        // Root name effect (gradient/colour) when they wear one, else their hue
+                        app.bloom.ui.components.UserNameText(
+                            author, MaterialTheme.typography.titleSmall, app.bloom.ui.theme.hueColor(author.hue),
+                            Modifier.weight(1f, fill = false).clickable { vm.openProfile(author.id) },
                         )
                         if (author.bot) { Spacer(Modifier.width(6.dp)); BotBadge() }
                         if (vm.plugin("platform_indicators")) {
@@ -603,7 +625,7 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
         DropdownMenu(menu, onDismissRequest = { menu = false }, shape = app.bloom.ui.theme.Radii.card) {
             Row(Modifier.padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                 listOf("🔥", "😂", "💜", "👀", "✨").forEach { e ->
-                    Text(e, style = MaterialTheme.typography.titleLarge, modifier = Modifier.clip(CircleShape).clickable { vm.react(m, e); menu = false }.padding(8.dp))
+                    Text(e, style = MaterialTheme.typography.titleLarge, modifier = Modifier.clip(CircleShape).clickable { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.Confirm); vm.react(m, e); menu = false }.padding(8.dp))
                 }
                 // any emoji (incl. custom) from the full panel
                 IconButton(onClick = { menu = false; reactPicker = true }) { Icon(Icons.Rounded.AddReaction, "More reactions") }
@@ -611,6 +633,10 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
             DropdownMenuItem({ Text("Reply") }, { vm.replyingTo = m; vm.editing = null; menu = false }, leadingIcon = { Icon(Icons.AutoMirrored.Rounded.Reply, null) })
             if (isMe && !m.deleted) {
                 DropdownMenuItem({ Text("Edit") }, { vm.editing = m; vm.replyingTo = null; menu = false }, leadingIcon = { Icon(Icons.Rounded.Edit, null) })
+            }
+            if (vm.authMode == app.bloom.core.AuthMode.ROOT && !m.deleted && m.system == null) {
+                val pinned = vm.pins?.any { it.id == m.id } == true
+                DropdownMenuItem({ Text(if (pinned) "Unpin" else "Pin") }, { vm.setPinned(m, !pinned); menu = false }, leadingIcon = { Icon(Icons.Rounded.PushPin, null) })
             }
             DropdownMenuItem({ Text("Copy text") }, { clipboard.setText(AnnotatedString(m.content)); menu = false }, leadingIcon = { Icon(Icons.Rounded.ContentCopy, null) })
             if (vm.plugin("view_raw")) {
@@ -625,6 +651,7 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
 
 @Composable
 private fun Reactions(vm: AppViewModel, m: Message) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val me = vm.me?.id
     val scheme = MaterialTheme.colorScheme
     // keep removed reactions around until their exit animation has finished
@@ -651,7 +678,7 @@ private fun Reactions(vm: AppViewModel, m: Message) {
                     Row(
                         Modifier.clip(RoundedCornerShape(50)).background(bg)
                             .border(1.dp, border, RoundedCornerShape(50))
-                            .clickable { vm.react(m, r.emoji) }.padding(horizontal = 9.dp, vertical = 4.dp),
+                            .clickable { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick); vm.react(m, r.emoji) }.padding(horizontal = 9.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         val custom = vm.customEmoji.firstOrNull { it.id == r.emoji }
@@ -685,7 +712,11 @@ private fun Reactions(vm: AppViewModel, m: Message) {
 
 @Composable
 private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
-    var text by remember { mutableStateOf("") }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    // each chat keeps its own unsent text (draft), restored when you come back to it
+    val chatId = vm.selectedChannelId
+    var text by remember(chatId) { mutableStateOf(chatId?.let { vm.drafts[it] }.orEmpty()) }
+    LaunchedEffect(chatId, text) { if (chatId != null && vm.editing == null) vm.saveDraft(chatId, text) }
     var panel by remember { mutableStateOf(ComposerPanel.NONE) }
     BackHandler(panel != ComposerPanel.NONE) { panel = ComposerPanel.NONE }
     // ---- keyboard ⇄ panel without any jump (the Telegram/WhatsApp way) ----
@@ -903,6 +934,7 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
                 // picked @mentions become tokens the core turns into Root mention links
                 var out = text
                 picked.entries.sortedByDescending { it.key.length }.forEach { (label, token) -> out = out.replace(label, token) }
+                haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.Confirm)
                 vm.send(out); text = ""; picked.clear(); panel = ComposerPanel.NONE
             }) { recording, level ->
                 // while recording, the Material shape comes alive: it turns and swells with your voice

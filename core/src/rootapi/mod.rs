@@ -6,6 +6,7 @@
 //! solves it, then sign-in is retried with the token. The result carries a
 //! client token and the user's hub server, which serves every other call.
 
+pub mod cosmetics;
 pub mod hub;
 pub mod messages;
 pub mod voice;
@@ -24,7 +25,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 pub const CONNECT_URL: &str = "https://connect.rootapp.com";
 /// Fallback API host (from the official app's build config) if sign-in doesn't return one.
 pub const API_URL: &str = "https://api.rootapp.com";
-pub const CLIENT_VERSION: &str = "bloom-0.1.0";
+pub const CLIENT_VERSION: &str = concat!("bloom-", env!("CARGO_PKG_VERSION"));
+pub const USER_AGENT: &str = concat!("Bloom/", env!("CARGO_PKG_VERSION"), " (Android)");
 
 /// Persisted login (in the app's private storage).
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -504,6 +506,7 @@ impl RootBackend {
             banner_url: None,
             status_text: r.user_defined_status.clone().map(|d| d.value).unwrap_or_default(),
                 bot: false,
+                cosmetic: Default::default(),
         };
         let pics: Vec<String> = [r.profile_picture_asset_uri.clone(), r.banner_asset_uri.clone()].into_iter().flatten().map(|v| v.value).collect();
         self.resolve_assets(&pics);
@@ -836,6 +839,7 @@ impl RootBackend {
                     if v.value.starts_with("https://") { Some(v.value.clone()) } else { self.asset_cache.get(&v.value).map(|x| x.0.clone()) }
                 })
             };
+            let name_fx = cosmetics::name_effect(&u.active_visible_cosmetics);
             let user = User {
                 id,
                 name: u.username.clone(),
@@ -850,6 +854,18 @@ impl RootBackend {
                 banner_url: pic(&u.banner_asset_uri),
                 status_text: u.user_defined_status.clone().map(|d| d.value).unwrap_or_default(),
                 bot: h & 0xFF == 9,
+                cosmetic: Cosmetic { name: name_fx, ..Default::default() },
+            };
+            // Since Root 0.9.46 user lists carry no bio/banner (they come from User/Get):
+            // keep what we already learned instead of blanking it.
+            let user = match self.users.get(&id) {
+                Some(old) => User {
+                    bio: if user.bio.is_empty() { old.bio.clone() } else { user.bio },
+                    banner_url: user.banner_url.or_else(|| old.banner_url.clone()),
+                    cosmetic: Cosmetic { name: user.cosmetic.name, profile_bg: old.cosmetic.profile_bg.clone(), worn: old.cosmetic.worn.clone() },
+                    ..user
+                },
+                None => user,
             };
             self.users.insert(id, user);
         }
@@ -870,6 +886,7 @@ impl RootBackend {
                 banner_url: None,
                 status_text: String::new(),
                 bot: self.ids.root(id).is_some_and(|(h, _)| h & 0xFF == 9),
+                cosmetic: Default::default(),
             });
         }
     }
@@ -1322,6 +1339,26 @@ impl RootBackend {
                     _ => vec![],
                 }
             }
+            // Root 0.9.46 cosmetics: 261 = profile background, 262 = visible cosmetics (name effect)
+            261 | 262 => {
+                let (user, name, bg) = if p.kind == 262 {
+                    let Ok(pk) = cosmetics::SetActiveVisiblePacket::decode(p.body.as_slice()) else { return vec![] };
+                    (pk.user_id, Some(cosmetics::name_effect(&pk.active_visible_cosmetics)), None)
+                } else {
+                    let Ok(pk) = cosmetics::SetProfileBackgroundPacket::decode(p.body.as_slice()) else { return vec![] };
+                    (pk.user_id, None, Some(pk.profile_background.as_ref().and_then(cosmetics::fill)))
+                };
+                let Some(u) = user else { return vec![] };
+                let id = self.ids.local(u.high64, u.low64);
+                match self.users.get_mut(&id) {
+                    Some(user) => {
+                        if let Some(n) = name { user.cosmetic.name = n; }
+                        if let Some(b) = bg { user.cosmetic.profile_bg = b; }
+                        vec![Event::User(user.clone())]
+                    }
+                    None => vec![],
+                }
+            }
             191 => {
                 let Ok(st) = StatusPacket::decode(p.body.as_slice()) else { return vec![] };
                 let Some(u) = st.user_id else { return vec![] };
@@ -1698,7 +1735,7 @@ impl Backend for RootBackend {
             .set("x-amz-meta-root-file-modification", &modified)
             .set("x-amz-meta-root-file-name", name)
             .set("content-type", if mime.is_empty() { "application/octet-stream" } else { mime })
-            .set("user-agent", "Bloom/0.1.0 (Android)")
+            .set("user-agent", USER_AGENT)
             .send_bytes(&bytes);
         match resp {
             Ok(r) => {
@@ -1788,6 +1825,72 @@ impl Backend for RootBackend {
                 .filter_map(|v| v.as_u64()).filter_map(|id| this.ids.root(id)).map(|(h, l)| UserUuid { high64: h, low64: l }).collect()
         };
         match op {
+            // Full profile (bio, banner, status, cosmetics) — Root 0.9.46 moved these to User/Get.
+            "user_get" => {
+                let uid = a.get("user").and_then(|v| v.as_u64()).ok_or("user")?;
+                let (h, l) = self.ids.root(uid).ok_or("unknown user")?;
+                let r: cosmetics::UserGetResponse = self
+                    .hub
+                    .unary("/root.UserGrpcService/Get", &cosmetics::UserGetRequest { user_id: Some(UserUuid { high64: h, low64: l }), language_code: "en".into() })
+                    .map_err(|e| e.to_string())?;
+                let pics: Vec<String> = [r.profile_picture_asset_uri.clone(), r.banner_asset_uri.clone()].into_iter().flatten().map(|v| v.value).filter(|v| !v.starts_with("https://")).collect();
+                self.resolve_assets(&pics);
+                let pic = |this: &Self, v: &Option<StringValue>| v.as_ref().filter(|v| !v.value.is_empty()).and_then(|v| {
+                    if v.value.starts_with("https://") { Some(v.value.clone()) } else { this.asset_cache.get(&v.value).map(|x| x.0.clone()) }
+                });
+                let avatar = pic(self, &r.profile_picture_asset_uri);
+                let banner = pic(self, &r.banner_asset_uri);
+                let bio = { let raw = r.description.clone().map(|d| d.value).unwrap_or_default(); self.render_bio(&raw) };
+                let act = r.active_cosmetics.clone().unwrap_or_default();
+                let worn: Vec<String> = act.cosmetics.iter().map(|c| {
+                    let t = cosmetics::type_name(c.r#type);
+                    match c.title.as_ref().map(|s| s.value.trim()).filter(|s| !s.is_empty()) { Some(n) => format!("{t} · {n}"), None => t.to_string() }
+                }).collect();
+                let name_fx = act.cosmetics.iter().filter(|c| c.r#type == cosmetics::TYPE_NAME_EFFECT).filter_map(|c| c.name_effect.as_ref()).flat_map(|m| m.fills.iter()).find_map(cosmetics::fill);
+                let bg = act.profile_background.as_ref().and_then(cosmetics::fill);
+                let id = self.ids.local(h, l);
+                let me = self.me;
+                let u = self.users.entry(id).or_insert_with(|| User {
+                    id, name: r.username.clone(), display_name: r.username.clone(), hue: hue_of(h, l), status: Status::Offline, platforms: vec![],
+                    bio: String::new(), pronouns: String::new(), friend_since: None, avatar_url: None, banner_url: None, status_text: String::new(),
+                    bot: h & 0xFF == 9, cosmetic: Default::default(),
+                });
+                if !r.username.is_empty() { u.name = r.username.clone(); }
+                u.bio = bio;
+                if avatar.is_some() { u.avatar_url = avatar; }
+                u.banner_url = banner;
+                u.status_text = r.user_defined_status.map(|d| d.value).unwrap_or_default();
+                u.cosmetic = Cosmetic { name: name_fx.or(u.cosmetic.name.clone()), profile_bg: bg, worn };
+                let out = json!(u);
+                if id == me { self.me_user = Some(serde_json::from_value(out.clone()).map_err(|e| e.to_string())?); }
+                Ok(out)
+            }
+            // Pinned messages of a channel / DM (Root's MessageGrpcService/Pin*).
+            "pins" => {
+                let ch = a.get("channel").and_then(|v| v.as_u64()).ok_or("channel")?;
+                let (container, community) = self.container(ch).ok_or("unknown chat")?;
+                let body = self.hub.raw("/root.v2.MessageGrpcService/PinList", &MessagePinListReq { container_id: Some(container), community_id: community }.encode_to_vec()).map_err(|e| e.to_string())?;
+                let (frames, status) = grpcweb::unframe(&body).map_err(|e| e.to_string())?;
+                if let Some(s) = status.filter(|s| s.code != 0) { return Err(grpcweb::Error::Status(s).to_string()); }
+                let payload = frames.into_iter().next().unwrap_or_default();
+                let raws: Vec<messages::RawMessage> = wire::find_all(&payload, |m: &messages::RawMessage| m.id.is_some() && m.user_id.is_some() && m.deleted_at.is_none());
+                let authors: Vec<Id> = raws.iter().filter_map(|m| m.user_id.as_ref()).map(|u| self.ids.local(u.high64, u.low64)).collect();
+                self.ensure_users(authors);
+                let mut out: Vec<Message> = raws.iter().map(|r| self.convert_one(r, ch)).collect();
+                out.dedup_by_key(|m| m.id);
+                out.sort_by_key(|m| std::cmp::Reverse(m.ts));
+                Ok(json!(out))
+            }
+            "pin" | "unpin" => {
+                let id = a.get("id").and_then(|v| v.as_u64()).ok_or("id")?;
+                let ch = a.get("channel").and_then(|v| v.as_u64()).ok_or("channel")?;
+                let (container, community) = self.container(ch).ok_or("unknown chat")?;
+                let (h, l) = self.ids.root(id).ok_or("unknown message")?;
+                let req = MessagePinReq { context: Some(context()), container_id: Some(container), community_id: community, message_id: Some(MessageUuid { high64: h, low64: l }) };
+                let path = if op == "pin" { "/root.v2.MessageGrpcService/PinCreate" } else { "/root.v2.MessageGrpcService/PinDelete" };
+                self.call_unit(path, &req)?;
+                Ok(json!(true))
+            }
             // mentionable roles of a server, for the @ picker
             "roles" => {
                 let sid = a.get("server_id").and_then(|v| v.as_u64()).ok_or("server_id")?;
@@ -2786,4 +2889,24 @@ struct VoiceListReq {
 struct VoiceListResp {
     #[prost(bytes = "vec", repeated, tag = "11")]
     members: Vec<Vec<u8>>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct MessagePinListReq {
+    #[prost(message, optional, tag = "10")]
+    container_id: Option<MessageContainerUuid>,
+    #[prost(message, optional, tag = "11")]
+    community_id: Option<CommunityUuid>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+struct MessagePinReq {
+    #[prost(message, optional, tag = "1")]
+    context: Option<RootContext>,
+    #[prost(message, optional, tag = "10")]
+    container_id: Option<MessageContainerUuid>,
+    #[prost(message, optional, tag = "11")]
+    community_id: Option<CommunityUuid>,
+    #[prost(message, optional, tag = "12")]
+    message_id: Option<MessageUuid>,
 }

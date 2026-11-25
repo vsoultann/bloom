@@ -177,8 +177,10 @@ internal fun SignedIn(vm: AppViewModel) {
                         else -> ChatPane(vm, onMenu = { settle(!panelOpen) })
                     }
                 }
-                // Tap the peeking edge to close the panel
-                if (panelOpen) Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { settle(false) })
+                // Tap the peeking edge to close the panel. Also swallow taps while the chat is
+                // still sliding, so a tap meant for the channel list can't land on a message
+                // (an author's avatar) as the chat passes under the finger.
+                if (panelOpen || offset.isRunning) Box(Modifier.fillMaxSize().clickable(remember { MutableInteractionSource() }, null) { settle(false) })
             }
         }
 
@@ -421,7 +423,14 @@ internal fun DmList(vm: AppViewModel) {
                         if (d.userIds.singleOrNull()?.let { vm.isMuted(it) } == true) Icon(Icons.Rounded.NotificationsOff, "Muted", Modifier.size(14.dp).padding(end = 2.dp), tint = scheme.onSurfaceVariant)
                         Text(vm.dmName(d), style = MaterialTheme.typography.titleMedium, fontWeight = if (d.unread) FontWeight.Bold else FontWeight.SemiBold, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
-                    d.lastMessage?.let {
+                    val draft = vm.drafts[d.id]
+                    if (draft != null && d.id != vm.selectedChannelId) Text(
+                        androidx.compose.ui.text.buildAnnotatedString {
+                            pushStyle(androidx.compose.ui.text.SpanStyle(color = scheme.error, fontWeight = FontWeight.SemiBold)); append("Draft: "); pop()
+                            append(plainText(draft).replace('\n', ' '))
+                        },
+                        style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    ) else d.lastMessage?.let {
                         val who = if (d.lastAuthor == vm.me?.id) "You: " else ""
                         Text(who + plainText(it), style = MaterialTheme.typography.bodySmall, color = if (d.unread) scheme.onSurface else scheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }

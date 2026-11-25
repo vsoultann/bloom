@@ -101,6 +101,8 @@ object Ui {
     var messageEnter by androidx.compose.runtime.mutableStateOf("rise")
     /** hide the status bar for a full-screen look */
     var hideStatusBar by androidx.compose.runtime.mutableStateOf(false)
+    /** vibration feedback on taps, long-presses, sends and gestures */
+    var haptics by androidx.compose.runtime.mutableStateOf(true)
     /** server icons morph: "always" · "selected" (only the open one) · "off" */
     var livingIcons by androidx.compose.runtime.mutableStateOf("always")
     /** emoji artwork: system · apple · fluent · google · twitter · facebook */
@@ -357,7 +359,13 @@ fun BloomTheme(
         val type = if (fam != null && Ui.fontScope == "all") baseType.withFont(fam, Ui.letterSpacing) else baseType.withSpacing(Ui.letterSpacing)
         MaterialTheme(colorScheme = scheme, typography = type, shapes = shapes) {
             // Default text/icon colour everywhere (otherwise un-coloured Text falls back to black).
-            CompositionLocalProvider(androidx.compose.material3.LocalContentColor provides scheme.onSurface, content = content)
+            val sysHaptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+            val gated = androidx.compose.runtime.remember(sysHaptics) { GatedHaptics(sysHaptics) }
+            CompositionLocalProvider(
+                androidx.compose.material3.LocalContentColor provides scheme.onSurface,
+                androidx.compose.ui.platform.LocalHapticFeedback provides gated,
+                content = content,
+            )
         }
     }
 }
@@ -405,3 +413,11 @@ fun contentOn(bg: Color): Color =
 
 @Composable
 fun onHueColor(hue: Int): Color = contentOn(hueColor(hue))
+
+
+/** Every haptic in the app goes through here, so Customize → Haptics turns them all off. */
+private class GatedHaptics(private val base: androidx.compose.ui.hapticfeedback.HapticFeedback) : androidx.compose.ui.hapticfeedback.HapticFeedback {
+    override fun performHapticFeedback(hapticFeedbackType: androidx.compose.ui.hapticfeedback.HapticFeedbackType) {
+        if (Ui.haptics) base.performHapticFeedback(hapticFeedbackType)
+    }
+}
