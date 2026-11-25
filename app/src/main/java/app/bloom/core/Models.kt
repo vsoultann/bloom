@@ -34,6 +34,11 @@ data class User(
     val profileBg: Fill? = null,
     /** Root cosmetics they wear ("Name effect · Aurora", ...) */
     val worn: List<String> = emptyList(),
+    /** Root cosmetic ids that need art bundles (see ui/components/CosmeticStore.kt) */
+    val frameId: String? = null,
+    val borderId: String? = null,
+    val fontId: String? = null,
+    val effectId: String? = null,
 ) {
     companion object {
         fun from(o: JSONObject) = User(
@@ -55,6 +60,10 @@ data class User(
             nameFill = o.optJSONObject("cosmetic")?.optJSONObject("name")?.let(Fill::from),
             profileBg = o.optJSONObject("cosmetic")?.optJSONObject("profile_bg")?.let(Fill::from),
             worn = o.optJSONObject("cosmetic")?.optJSONArray("worn")?.strings().orEmpty(),
+            frameId = o.optJSONObject("cosmetic")?.optStringOrNull("frame"),
+            borderId = o.optJSONObject("cosmetic")?.optStringOrNull("border"),
+            fontId = o.optJSONObject("cosmetic")?.optStringOrNull("font"),
+            effectId = o.optJSONObject("cosmetic")?.optStringOrNull("effect"),
         )
     }
 }

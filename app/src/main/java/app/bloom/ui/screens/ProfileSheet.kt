@@ -144,8 +144,10 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
 
     // Root profile background cosmetic: tints the whole card, fading into the sheet
     val bg = u.profileBg?.let { f -> f.colors.map { androidx.compose.ui.graphics.Color(it) } }
+    val border = u.borderId?.let { app.bloom.ui.components.CosmeticStore.assets[it] }
     Column(
         Modifier.fillMaxSize()
+            .then(app.bloom.ui.components.cosmeticBorderOf(Modifier, border))
             .then(if (bg != null) Modifier.background(Brush.verticalGradient(listOf(bg.first().copy(alpha = 0.55f), (bg.getOrNull(1) ?: bg.first()).copy(alpha = 0.22f), androidx.compose.ui.graphics.Color.Transparent))) else Modifier)
             .verticalScroll(rememberScrollState()),
     ) {

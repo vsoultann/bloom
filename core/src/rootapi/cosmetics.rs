@@ -133,6 +133,25 @@ pub struct SetActiveVisiblePacket {
     pub active_visible_cosmetics: Vec<ActiveVisibleCosmetic>,
 }
 
+/// Live packet 702 (container field 190): someone changed their profile.
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct SetProfilePacket {
+    #[prost(int32, tag = "1")]
+    pub packet_type: i32,
+    #[prost(message, optional, tag = "3")]
+    pub user_id: Option<UserUuid>,
+    #[prost(string, tag = "4")]
+    pub username: String,
+    #[prost(string, tag = "5")]
+    pub profile_picture_asset_uri: String,
+    #[prost(message, optional, tag = "6")]
+    pub description: Option<StringValue>,
+    #[prost(message, optional, tag = "7")]
+    pub banner_asset_uri: Option<StringValue>,
+    #[prost(message, optional, tag = "8")]
+    pub user_defined_status: Option<StringValue>,
+}
+
 /// Live packet 717: someone changed their profile background.
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct SetProfileBackgroundPacket {
@@ -168,6 +187,49 @@ pub fn fill(f: &CosmeticFill) -> Option<Fill> {
         }
     }
     f.color.as_ref().map(|c| Fill { colors: vec![argb(c)], angle: 0.0 })
+}
+
+pub fn hex_id(id: &Option<CosmeticUuid>) -> Option<String> {
+    id.as_ref().map(|u| format!("{:016x}{:016x}", u.high64, u.low64))
+}
+
+pub fn parse_hex_id(s: &str) -> Option<CosmeticUuid> {
+    if s.len() != 32 { return None; }
+    Some(CosmeticUuid { high64: u64::from_str_radix(&s[..16], 16).ok()?, low64: u64::from_str_radix(&s[16..], 16).ok()? })
+}
+
+/// (type, id) pairs → the bundle-backed slots of a [Cosmetic].
+pub fn apply_ids(c: &mut crate::model::Cosmetic, items: impl Iterator<Item = (i32, Option<String>)>) {
+    c.frame = None; c.border = None; c.font = None; c.effect = None;
+    for (t, id) in items {
+        match t {
+            TYPE_AVATAR_FRAME => c.frame = id,
+            TYPE_CARD_BORDER => c.border = id,
+            TYPE_NAME_FONT => c.font = id,
+            TYPE_NAME_EFFECT => c.effect = id,
+            _ => {}
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetBundlesReq {
+    #[prost(message, repeated, tag = "10")]
+    pub ids: Vec<CosmeticUuid>,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct Bundle {
+    #[prost(message, optional, tag = "10")]
+    pub id: Option<CosmeticUuid>,
+    #[prost(string, tag = "11")]
+    pub url: String,
+}
+
+#[derive(Clone, PartialEq, ::prost::Message)]
+pub struct GetBundlesResp {
+    #[prost(message, repeated, tag = "10")]
+    pub bundles: Vec<Bundle>,
 }
 
 /// The name effect among someone's visible cosmetics, if they wear one.

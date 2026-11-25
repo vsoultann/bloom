@@ -376,6 +376,10 @@ impl RootBackend {
                 self.load_dms();
                 Ok(Some(s + 1))
             }
+            s if s == 4 + n => {
+                self.refresh_known_users();
+                Ok(Some(s + 1))
+            }
             _ => {
                 // custom emoji from all your servers, so :name: renders everywhere
                 let list = self.fetch_custom_emoji();
@@ -783,9 +787,22 @@ impl RootBackend {
 
     /// Fetches profiles for any authors we haven't seen yet.
     fn ensure_users(&mut self, ids: Vec<Id>) {
+        self.fetch_users(ids, false)
+    }
+
+    /// Re-fetches everyone we already know, so cached names/pictures/statuses don't go stale.
+    fn refresh_known_users(&mut self) {
+        let mut ids: Vec<Id> = self.users.keys().copied().filter(|id| *id != self.me).collect();
+        ids.sort_unstable();
+        for chunk in ids.chunks(100) {
+            self.fetch_users(chunk.to_vec(), true);
+        }
+    }
+
+    fn fetch_users(&mut self, ids: Vec<Id>, force: bool) {
         let missing: Vec<UserUuid> = ids
             .into_iter()
-            .filter(|id| !self.users.contains_key(id))
+            .filter(|id| force || !self.users.contains_key(id))
             .filter_map(|id| self.ids.root(id))
             .collect::<std::collections::HashSet<_>>()
             .into_iter()
@@ -854,15 +871,21 @@ impl RootBackend {
                 banner_url: pic(&u.banner_asset_uri),
                 status_text: u.user_defined_status.clone().map(|d| d.value).unwrap_or_default(),
                 bot: h & 0xFF == 9,
-                cosmetic: Cosmetic { name: name_fx, ..Default::default() },
+                cosmetic: {
+                    let mut c = Cosmetic { name: name_fx, ..Default::default() };
+                    cosmetics::apply_ids(&mut c, u.active_visible_cosmetics.iter().map(|v| (v.r#type, cosmetics::hex_id(&v.id))));
+                    c
+                },
             };
             // Since Root 0.9.46 user lists carry no bio/banner (they come from User/Get):
             // keep what we already learned instead of blanking it.
             let user = match self.users.get(&id) {
                 Some(old) => User {
+                    status: old.status,
+                    friend_since: old.friend_since.or(user.friend_since),
                     bio: if user.bio.is_empty() { old.bio.clone() } else { user.bio },
                     banner_url: user.banner_url.or_else(|| old.banner_url.clone()),
-                    cosmetic: Cosmetic { name: user.cosmetic.name, profile_bg: old.cosmetic.profile_bg.clone(), worn: old.cosmetic.worn.clone() },
+                    cosmetic: Cosmetic { profile_bg: old.cosmetic.profile_bg.clone(), worn: old.cosmetic.worn.clone(), ..user.cosmetic },
                     ..user
                 },
                 None => user,
@@ -1303,7 +1326,9 @@ impl RootBackend {
                 let is_edit = matches!(env.packet_type, 5806 | 209) || raw.edited_at.as_ref().is_some_and(|t| t.seconds > created + 10);
                 if deleted {
                     evs.push(Event::Delete { id: m.id });
-                } else if known && !is_edit {
+                } else if known && (!is_edit || self.message_mut(m.id).is_some_and(|cur| cur.content == m.content)) {
+                    // same text = not an edit (re-delivery, pin, attachment processing finished);
+                    // Root itself only tags "edited" when the text was really edited
                     // our own send (or a re-delivery): swap in the server copy, which has
                     // the resolved attachments; content/edit state are unchanged
                     evs.push(Event::Replace(m));
@@ -1339,10 +1364,37 @@ impl RootBackend {
                     _ => vec![],
                 }
             }
+            // someone changed their profile (name, picture, bio, banner, status): update live
+            190 => {
+                let Ok(pk) = cosmetics::SetProfilePacket::decode(p.body.as_slice()) else { return vec![] };
+                let Some(u) = pk.user_id else { return vec![] };
+                let id = self.ids.local(u.high64, u.low64);
+                if !self.users.contains_key(&id) { return vec![] }
+                let uris: Vec<String> = [Some(pk.profile_picture_asset_uri.clone()).filter(|s| !s.is_empty()), pk.banner_asset_uri.as_ref().map(|v| v.value.clone())]
+                    .into_iter().flatten().filter(|s| !s.starts_with("https://") && !s.is_empty()).collect();
+                self.resolve_assets(&uris);
+                let resolve = |this: &Self, v: &str| if v.starts_with("https://") { Some(v.to_string()) } else { this.asset_cache.get(v).map(|x| x.0.clone()) };
+                let avatar = (!pk.profile_picture_asset_uri.is_empty()).then(|| resolve(self, &pk.profile_picture_asset_uri)).flatten();
+                let banner = pk.banner_asset_uri.as_ref().filter(|v| !v.value.is_empty()).and_then(|v| resolve(self, &v.value));
+                let bio = pk.description.as_ref().map(|d| self.render_bio(&d.value));
+                let me = self.me;
+                let user = self.users.get_mut(&id).unwrap();
+                if !pk.username.is_empty() { user.name = pk.username.clone(); user.display_name = pk.username.clone(); }
+                if avatar.is_some() || pk.profile_picture_asset_uri.is_empty() { user.avatar_url = avatar; }
+                user.banner_url = banner;
+                if let Some(b) = bio { user.bio = b; }
+                user.status_text = pk.user_defined_status.map(|d| d.value).unwrap_or_default();
+                let out = user.clone();
+                if id == me { self.me_user = Some(out.clone()); }
+                vec![Event::User(out)]
+            }
             // Root 0.9.46 cosmetics: 261 = profile background, 262 = visible cosmetics (name effect)
             261 | 262 => {
                 let (user, name, bg) = if p.kind == 262 {
                     let Ok(pk) = cosmetics::SetActiveVisiblePacket::decode(p.body.as_slice()) else { return vec![] };
+                    let ids: Vec<(i32, Option<String>)> = pk.active_visible_cosmetics.iter().map(|v| (v.r#type, cosmetics::hex_id(&v.id))).collect();
+                    let uid = pk.user_id.as_ref().map(|u| self.ids.local(u.high64, u.low64));
+                    if let Some(user) = uid.and_then(|id| self.users.get_mut(&id)) { cosmetics::apply_ids(&mut user.cosmetic, ids.into_iter()); }
                     (pk.user_id, Some(cosmetics::name_effect(&pk.active_visible_cosmetics)), None)
                 } else {
                     let Ok(pk) = cosmetics::SetProfileBackgroundPacket::decode(p.body.as_slice()) else { return vec![] };
@@ -1860,10 +1912,22 @@ impl Backend for RootBackend {
                 if avatar.is_some() { u.avatar_url = avatar; }
                 u.banner_url = banner;
                 u.status_text = r.user_defined_status.map(|d| d.value).unwrap_or_default();
-                u.cosmetic = Cosmetic { name: name_fx.or(u.cosmetic.name.clone()), profile_bg: bg, worn };
+                let mut c = Cosmetic { name: name_fx.or(u.cosmetic.name.clone()), profile_bg: bg, worn, ..Default::default() };
+                cosmetics::apply_ids(&mut c, act.cosmetics.iter().map(|x| (x.r#type, cosmetics::hex_id(&x.id))));
+                u.cosmetic = c;
                 let out = json!(u);
                 if id == me { self.me_user = Some(serde_json::from_value(out.clone()).map_err(|e| e.to_string())?); }
                 Ok(out)
+            }
+            // Download URLs of cosmetic art bundles (.tar.gz with manifest.json)
+            "cosmetic_bundles" => {
+                let ids: Vec<cosmetics::CosmeticUuid> = a.get("ids").and_then(|v| v.as_array()).cloned().unwrap_or_default().iter()
+                    .filter_map(|v| v.as_str()).filter_map(cosmetics::parse_hex_id).collect();
+                if ids.is_empty() { return Ok(json!({})); }
+                let r: cosmetics::GetBundlesResp = self.hub.unary("/root.UserCosmeticGrpcService/GetBundlesByIds", &cosmetics::GetBundlesReq { ids }).map_err(|e| e.to_string())?;
+                let mut out = serde_json::Map::new();
+                for b in r.bundles { if let Some(id) = cosmetics::hex_id(&b.id) { out.insert(id, json!(b.url)); } }
+                Ok(serde_json::Value::Object(out))
             }
             // Pinned messages of a channel / DM (Root's MessageGrpcService/Pin*).
             "pins" => {
@@ -2241,7 +2305,10 @@ impl Backend for RootBackend {
                     for m in &fresh {
                         match old_ids.get(&m.id) {
                             None => out.push(Event::Message(m.clone())),
-                            Some(o) if o.content != m.content => out.push(Event::Edit { id: m.id, content: m.content.clone(), ts: m.edited_ts.unwrap_or(now) }),
+                            // only Root's own edit stamp makes it an edit; text that differs just because
+                            // emoji/@names were resolved later is a quiet refresh
+                            Some(o) if o.content != m.content && m.edited_ts.is_some() => out.push(Event::Edit { id: m.id, content: m.content.clone(), ts: m.edited_ts.unwrap_or(now) }),
+                            Some(o) if o.content != m.content => out.push(Event::Replace(m.clone())),
                             _ => {}
                         }
                     }

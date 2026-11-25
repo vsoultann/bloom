@@ -9,6 +9,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.offset
@@ -57,6 +58,8 @@ val LocalAvatars = compositionLocalOf<Map<Long, ImageBitmap>> { emptyMap() }
 
 /** userId -> real profile picture URL from the backend. */
 val LocalAvatarUrls = compositionLocalOf<Map<Long, String>> { emptyMap() }
+/** userId → Root avatar-frame cosmetic id */
+val LocalAvatarFrames = compositionLocalOf<Map<Long, String>> { emptyMap() }
 
 @Composable
 fun statusColor(s: Status): Color = when (s) {
@@ -104,6 +107,15 @@ fun Avatar(
                     ),
                 )
             }
+        }
+        // Root avatar frame: art on a 256 canvas where the picture fills the middle 168
+        val frame = userId?.let { LocalAvatarFrames.current[it] }?.let { CosmeticStore.assets[it] }
+        if (frame?.art != null && app.bloom.ui.theme.Ui.cosmeticFrames) {
+            coil3.compose.AsyncImage(
+                frame.art, null,
+                Modifier.align(Alignment.Center).requiredSize(size * (frame.canvas / frame.avatarSize)),
+                contentScale = ContentScale.Fit,
+            )
         }
         if (status != null) {
             val c by animateColorAsState(statusColor(status), Motion.effects(), label = "status")

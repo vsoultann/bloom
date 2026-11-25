@@ -124,6 +124,11 @@ class MainActivity : ComponentActivity() {
             val pic = vm.myAvatar
             val avatars = remember(meId, pic) { if (meId != null && pic != null) mapOf(meId to pic) else emptyMap() }
             val avatarUrls = remember(vm.users.toMap()) { vm.users.mapNotNull { (id, u) -> u.avatarUrl?.let { id to it } }.toMap() }
+            // Root cosmetics: avatar frames everywhere; fetch art bundles for everyone we can see
+            val frames = remember(vm.users.toMap()) { vm.users.mapNotNull { (id, u) -> u.frameId?.let { id to it } }.toMap() }
+            androidx.compose.runtime.LaunchedEffect(vm.users.toMap()) {
+                app.bloom.ui.components.CosmeticStore.request(this@MainActivity, vm.users.values.flatMap { listOf(it.frameId, it.borderId, it.fontId) })
+            }
             // calls ask for the microphone first, then continue
             val micAsk = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
                 if (granted) vm.voice.retryJoin() else { vm.voice.needsMic = null; vm.error = "Bloom needs the microphone for calls" }
@@ -138,7 +143,7 @@ class MainActivity : ComponentActivity() {
                 if (hideBars) c.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars()) else c.show(androidx.core.view.WindowInsetsCompat.Type.statusBars())
             }
             BloomTheme(vm.look, vm.amoled, vm.currentOverrides, vm.bgShapes) {
-                CompositionLocalProvider(LocalAvatars provides avatars, LocalAvatarUrls provides avatarUrls) {
+                CompositionLocalProvider(LocalAvatars provides avatars, LocalAvatarUrls provides avatarUrls, app.bloom.ui.components.LocalAvatarFrames provides frames) {
                     androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.fillMaxSize()) {
                         MainScreen(vm)
                         // shared-element flights for profile pictures draw above everything

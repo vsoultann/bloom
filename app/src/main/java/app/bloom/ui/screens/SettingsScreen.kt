@@ -117,6 +117,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
         if (show("colors colours palette accent")) item { ColorsSection(vm) }
         if (vm.look == Look.MATERIAL) item { BackgroundShapesSection(vm) }
         item {
+            UpdatesSection(vm)
             ExpandableSection("GIFs", if (vm.klipyKey.isBlank()) "Add a free Klipy API key to search GIFs" else "Search is on · favourites sync with Root", Icons.Rounded.Gif) {
                 var key by remember { mutableStateOf(vm.klipyKey) }
                 Text(
@@ -502,6 +503,7 @@ private fun ChatSection(vm: AppViewModel) {
         toggle("12-hour time", "Show 3:45 PM instead of 15:45", vm.clock12h, "clock_12h")
         toggle("Compact messages", "Smaller avatars and tighter spacing", vm.compact, "compact")
         toggle("Swipe to reply", "Swipe a message right-to-left to reply", vm.swipeReply, "swipe_reply")
+        toggle("Send preview", "Show what plugins will turn your message into, above the message box", vm.sendPreview, "send_preview")
         toggle("Channel icons", "Each channel's own picture (like Root), with a small type badge. Off = plain # symbols", vm.channelIcons, "channel_icons")
         toggle("Channel descriptions", "Show the channel's description under its name", vm.channelTopics, "channel_topics")
         toggle("Autoplay GIFs", "Animate GIFs in chat (off = still frame)", vm.autoplayGifs, "autoplay_gifs")
@@ -562,4 +564,50 @@ private fun PluginIcon(id: String, enabled: Boolean, core: Boolean) {
             .background(androidx.compose.ui.graphics.lerp(scheme.surfaceContainerHighest, scheme.primary, t), shape),
         contentAlignment = Alignment.Center,
     ) { Icon(icon, null, tint = androidx.compose.ui.graphics.lerp(scheme.onSurfaceVariant, scheme.onPrimary, t), modifier = Modifier.size(22.dp)) }
+}
+
+
+@Composable
+private fun UpdatesSection(vm: AppViewModel) {
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    val st = app.bloom.Updater.state
+    val r = app.bloom.Updater.latest
+    val sub = when (st) {
+        app.bloom.Updater.State.AVAILABLE, app.bloom.Updater.State.READY -> "Bloom ${r?.version} is out"
+        app.bloom.Updater.State.UP_TO_DATE -> "Up to date · ${app.bloom.Updater.current}"
+        else -> "Version ${app.bloom.Updater.current}"
+    }
+    ExpandableSection("Updates", sub, Icons.Rounded.SystemUpdate) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { vm.checkForUpdates(manual = true) }, enabled = st != app.bloom.Updater.State.CHECKING && st != app.bloom.Updater.State.DOWNLOADING) {
+                    Icon(Icons.Rounded.Refresh, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp))
+                    Text(if (st == app.bloom.Updater.State.CHECKING) "Checking…" else "Check for updates")
+                }
+                when (st) {
+                    app.bloom.Updater.State.AVAILABLE -> FilledTonalButton(onClick = { vm.downloadUpdate() }) { Text("Download ${r?.version}") }
+                    app.bloom.Updater.State.READY -> FilledTonalButton(onClick = { app.bloom.Updater.install(ctx) }) { Text("Install") }
+                    else -> {}
+                }
+            }
+            if (st == app.bloom.Updater.State.DOWNLOADING) LinearProgressIndicator({ app.bloom.Updater.progress }, Modifier.fillMaxWidth())
+            app.bloom.Updater.message?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+            if ((st == app.bloom.Updater.State.AVAILABLE || st == app.bloom.Updater.State.READY) && !r?.notes.isNullOrBlank())
+                Text(r!!.notes.take(600), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Automatic updates", style = MaterialTheme.typography.titleSmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("off" to "Off", "notify" to "Tell me", "download" to "Download for me").forEach { (k, l) ->
+                    FilterChip(vm.autoUpdate == k, { vm.chooseAutoUpdate(k) }, { Text(l) })
+                }
+            }
+            Text(
+                when (vm.autoUpdate) {
+                    "off" -> "Bloom never checks on its own."
+                    "download" -> "Checks GitHub when Bloom starts (at most every 6 h), downloads new versions and asks you to install."
+                    else -> "Checks GitHub when Bloom starts (at most every 6 h) and tells you when there's a new version."
+                },
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
 }

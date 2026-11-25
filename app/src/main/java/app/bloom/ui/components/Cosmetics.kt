@@ -15,6 +15,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -68,17 +70,68 @@ fun fillBrush(f: Fill?, phase: Float = 0f): Brush? = when {
  */
 @Composable
 fun UserNameText(user: User, style: TextStyle, fallback: Color, modifier: Modifier = Modifier, animated: Boolean = false, maxLines: Int = 1) {
-    val fill = user.nameFill
-    val phase = if (animated && fill != null && !fill.solid && Ui.animations) {
+    val effect = user.effectId?.let { CosmeticStore.builtInEffects[it] }
+    // prism = moving rainbow, whatever colours were picked
+    val fill = if (effect == "prism") Fill(listOf(0xFFFF6B6B, 0xFFFFD66B, 0xFF9DFF6B, 0xFF6BD5FF, 0xFFB18CFF).map { it.toInt() }, 0f) else user.nameFill
+    val moving = (animated || effect == "prism") && fill != null && !fill.solid && Ui.animations && Ui.cosmeticFrames
+    val phase = if (moving) {
         val t = rememberInfiniteTransition(label = "nameFx")
         t.animateFloat(0f, 1f, infiniteRepeatable(tween((6000 / Ui.speed).toInt(), easing = LinearEasing), RepeatMode.Restart), label = "nameFxPhase").value
     } else 0f
     val brush = remember(fill, phase) { fillBrush(fill, phase) }
-    Text(
-        user.displayName,
-        style = if (brush != null) style.copy(brush = brush) else style.copy(color = fallback),
-        maxLines = maxLines, overflow = TextOverflow.Ellipsis, modifier = modifier,
-    )
+    val base = fill?.colors?.firstOrNull()?.let { Color(it) } ?: fallback
+    // Root name font cosmetic (downloaded TTF/OTF)
+    val fontAsset = if (Ui.cosmeticFrames) user.fontId?.let { CosmeticStore.assets[it] } else null
+    val family = remember(fontAsset?.font) {
+        fontAsset?.font?.let { f -> runCatching { androidx.compose.ui.text.font.FontFamily(androidx.compose.ui.text.font.Font(f, androidx.compose.ui.text.font.FontWeight(fontAsset.fontWeight))) }.getOrNull() }
+    }
+    var st = if (brush != null) style.copy(brush = brush) else style.copy(color = fallback)
+    if (family != null) st = st.copy(fontFamily = family, fontSize = style.fontSize * fontAsset!!.sizeScale)
+    if (Ui.cosmeticFrames) st = when (effect) {
+        "neon" -> st.copy(shadow = androidx.compose.ui.graphics.Shadow(base.copy(alpha = 0.9f), Offset.Zero, 14f))
+        "toon" -> st.copy(shadow = androidx.compose.ui.graphics.Shadow(Color.Black.copy(alpha = 0.85f), Offset(2.5f, 2.5f), 0f))
+        "pop" -> st.copy(shadow = androidx.compose.ui.graphics.Shadow(base.copy(red = base.red * 0.45f, green = base.green * 0.45f, blue = base.blue * 0.45f), Offset(0f, 3.5f), 1f))
+        "gummy" -> st.copy(shadow = androidx.compose.ui.graphics.Shadow(base.copy(alpha = 0.55f), Offset(0f, 2f), 7f))
+        "prism" -> st.copy(shadow = androidx.compose.ui.graphics.Shadow(Color.White.copy(alpha = 0.35f), Offset.Zero, 8f))
+        else -> st
+    }
+    Text(user.displayName, style = st, maxLines = maxLines, overflow = TextOverflow.Ellipsis, modifier = modifier)
+}
+
+/**
+ * Root card-border cosmetic: the art is a 9-slice (corners keep their size, edges stretch).
+ * Insets are in image pixels; Root's art is drawn at @3x, so 3 px = 1 dp.
+ */
+fun Modifier.cosmeticBorder(asset: CosmeticAsset?): Modifier {
+    val file = asset?.art ?: return this
+    if (!Ui.cosmeticFrames) return this
+    return this.then(Modifier.drawWithCache {
+        val bmp = BorderCache.get(file)
+        onDrawWithContent {
+            drawContent()
+            if (bmp == null) return@onDrawWithContent
+            val w = bmp.width; val h = bmp.height
+            val (l, t, r, b) = asset.insets.map { it.toInt().coerceAtLeast(0) }.let { if (it.all { v -> v == 0 }) listOf(w / 3, h / 3, w / 3, h / 3) else it }
+            val k = density / 3f
+            val dl = l * k; val dt = t * k; val dr = r * k; val db = b * k
+            val xs = floatArrayOf(0f, dl, size.width - dr, size.width)
+            val ys = floatArrayOf(0f, dt, size.height - db, size.height)
+            val sx = intArrayOf(0, l, w - r, w); val sy = intArrayOf(0, t, h - b, h)
+            for (i in 0..2) for (j in 0..2) {
+                val sw = sx[i + 1] - sx[i]; val sh = sy[j + 1] - sy[j]
+                val dw = xs[i + 1] - xs[i]; val dh = ys[j + 1] - ys[j]
+                if (sw <= 0 || sh <= 0 || dw <= 0f || dh <= 0f) continue
+                if (i == 1 && j == 1) continue // the middle stays see-through
+                drawImage(bmp, androidx.compose.ui.unit.IntOffset(sx[i], sy[j]), androidx.compose.ui.unit.IntSize(sw, sh),
+                    androidx.compose.ui.unit.IntOffset(xs[i].toInt(), ys[j].toInt()), androidx.compose.ui.unit.IntSize(dw.toInt().coerceAtLeast(1), dh.toInt().coerceAtLeast(1)))
+            }
+        }
+    })
+}
+
+private object BorderCache {
+    private val map = HashMap<String, androidx.compose.ui.graphics.ImageBitmap?>()
+    fun get(f: java.io.File) = map.getOrPut(f.path) { runCatching { android.graphics.BitmapFactory.decodeFile(f.path)?.asImageBitmap() }.getOrNull() }
 }
 
 /** Chips for the cosmetics someone wears (avatar frames etc. Bloom can't draw yet are still listed). */
@@ -90,3 +143,6 @@ fun WornCosmetics(worn: List<String>, modifier: Modifier = Modifier) {
         worn.forEach { w -> SuggestionChip(onClick = {}, label = { Text(w, style = MaterialTheme.typography.labelMedium) }) }
     }
 }
+
+/** Java-style entry point for [cosmeticBorder] (handy where the extension isn't imported). */
+fun cosmeticBorderOf(m: Modifier, asset: CosmeticAsset?): Modifier = m.cosmeticBorder(asset)

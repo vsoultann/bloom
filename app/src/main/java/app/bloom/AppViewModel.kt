@@ -337,6 +337,24 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         return until == -1L || until > System.currentTimeMillis()
     }
 
+    // ---- updates (GitHub releases) ----
+    /** "off" · "notify" (tell me) · "download" (download it, then ask to install) */
+    var autoUpdate by mutableStateOf("notify"); private set
+    /** a downloaded update is waiting: show the install prompt */
+    var updatePrompt by mutableStateOf(false)
+    fun chooseAutoUpdate(mode: String) { autoUpdate = mode; viewModelScope.launch(safe) { Core.setSetting("auto_update", mode) } }
+    fun checkForUpdates(manual: Boolean) = viewModelScope.launch(safe) {
+        val r = Updater.check()
+        Core.setSetting("last_update_check", System.currentTimeMillis())
+        when {
+            r == null -> if (manual && Updater.state == Updater.State.UP_TO_DATE) error = "Bloom ${Updater.current} is the latest"
+            manual -> {}
+            autoUpdate == "download" -> if (Updater.download(getApplication())) updatePrompt = true
+            else -> error = "Bloom ${r.version} is out · Settings → Updates"
+        }
+    }
+    fun downloadUpdate() = viewModelScope.launch(safe) { if (Updater.download(getApplication())) updatePrompt = true }
+
     /** Most-used unicode emoji, most frequent first (Recent tab in the emoji panel). */
     var recentEmoji by mutableStateOf<List<String>>(emptyList()); private set
     private val emojiCounts = mutableMapOf<String, Int>()
@@ -554,6 +572,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             textScale = settings.optDouble("text_scale", 1.0).toFloat()
             compact = settings.optBoolean("compact", false)
             swipeReply = settings.optBoolean("swipe_reply", true)
+            sendPreview = settings.optBoolean("send_preview", false)
             autoplayGifs = settings.optBoolean("autoplay_gifs", true)
             typingStyle = settings.optString("typing_style", "avatars")
             channelIcons = settings.optBoolean("channel_icons", true)
@@ -579,10 +598,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 u.messageEnter = settings.optString("ui_msg_enter", "rise")
                 u.hideStatusBar = settings.optBoolean("ui_hide_status", false)
                 u.haptics = settings.optBoolean("ui_haptics", true)
+                u.cosmeticFrames = settings.optBoolean("ui_cosmetics", true)
             }
             settings.optJSONObject("nicknames")?.let { o -> o.keys().forEach { k -> k.toLongOrNull()?.let { nicknames[it] = o.getString(k) } } }
             settings.optJSONObject("user_notif")?.let { o -> o.keys().forEach { k -> k.toLongOrNull()?.let { userNotif[it] = o.getString(k) } } }
             settings.optJSONObject("mute_until")?.let { o -> o.keys().forEach { k -> k.toLongOrNull()?.let { muteUntil[it] = o.getLong(k) } } }
+            autoUpdate = settings.optString("auto_update", "notify")
+            if (autoUpdate != "off" && System.currentTimeMillis() - settings.optLong("last_update_check", 0L) > 6 * 3600_000L) checkForUpdates(manual = false)
             settings.optJSONObject("emoji_counts")?.let { o -> o.keys().forEach { k -> emojiCounts[k] = o.optInt(k) }; recentEmoji = emojiCounts.entries.sortedByDescending { it.value }.take(32).map { it.key } }
             settings.optJSONObject("drafts")?.let { o -> o.keys().forEach { k -> k.toLongOrNull()?.let { drafts[it] = o.getString(k) } } }
             settings.optJSONArray("pinned_dms")?.let { a -> for (i in 0 until a.length()) pinnedDms.add(a.getLong(i)) }
@@ -1337,6 +1359,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var textScale by mutableStateOf(1f); private set
     var compact by mutableStateOf(false); private set
     var swipeReply by mutableStateOf(true); private set
+    /** the "what plugins will send" preview line above the message box (off by default) */
+    var sendPreview by mutableStateOf(false); private set
     var autoplayGifs by mutableStateOf(true); private set
     var channelIcons by mutableStateOf(true); private set
     var channelTopics by mutableStateOf(true); private set
@@ -1379,6 +1403,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "text_scale" -> textScale = (value as Number).toFloat()
             "compact" -> compact = value as Boolean
             "swipe_reply" -> swipeReply = value as Boolean
+            "send_preview" -> sendPreview = value as Boolean
             "autoplay_gifs" -> autoplayGifs = value as Boolean
             "typing_style" -> typingStyle = value as String
             "channel_icons" -> channelIcons = value as Boolean
@@ -1392,6 +1417,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             "ui_msg_enter" -> Ui.messageEnter = value as String
             "ui_hide_status" -> Ui.hideStatusBar = value as Boolean
             "ui_haptics" -> Ui.haptics = value as Boolean
+            "ui_cosmetics" -> Ui.cosmeticFrames = value as Boolean
             "ui_living" -> Ui.livingIcons = value as String
             "ui_bubble" -> Ui.statusBubble = value as String
             "ui_emoji" -> Ui.emojiPack = value as String

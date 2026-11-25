@@ -186,6 +186,17 @@ internal fun SignedIn(vm: AppViewModel) {
 
         ProfileSheet(vm)
         MediaViewer(vm)
+        if (vm.updatePrompt) {
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            AlertDialog(
+                onDismissRequest = { vm.updatePrompt = false },
+                icon = { Icon(Icons.Rounded.SystemUpdate, null) },
+                title = { Text("Bloom ${app.bloom.Updater.latest?.version} is ready") },
+                text = { Text(app.bloom.Updater.latest?.notes?.take(400)?.ifBlank { null } ?: "The update has been downloaded.") },
+                confirmButton = { Button(onClick = { vm.updatePrompt = false; app.bloom.Updater.install(ctx) }) { Text("Install") } },
+                dismissButton = { TextButton(onClick = { vm.updatePrompt = false }) { Text("Later") } },
+            )
+        }
         ErrorToast(vm, Modifier.align(Alignment.BottomCenter))
     }
 }

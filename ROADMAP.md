@@ -257,7 +257,11 @@ Design rules written to `docs/DESIGN.md` (motion, shape, spacing, type, contrast
 Root updated on the phone (0.9.46, OTA bundle 2026-11-25); schema re-extracted (`tools/`: 950 messages, 263 RPCs).
 - [~] Root moved bios/banners out of user lists (`UserResponse` lost fields 16/17) → profiles now load them from the new `User/Get` (also for yourself); list refreshes keep known bios instead of blanking them
 - [~] Root cosmetics: name effects (gradient/colour names in chat, pins, profile — drifting on the profile), profile backgrounds, list of worn cosmetics; live packets 261/262 update them. Unit-tested decoding
-- [ ] Cosmetic avatar frames / card borders / name fonts: need Root's art bundles (`UserCosmetic/GetBundlesByIds`, manifest format unverified)
+- [~] Cosmetic avatar frames (on every avatar, 256 canvas / 168 avatar like Root), card borders (9-slice around the profile), name fonts (downloaded TTF/OTF, weight, size scale) and Root's built-in name effects (neon, toon, pop, gummy, prism). Bundles: `UserCosmetic/GetBundlesByIds` → .tar.gz + manifest.json, unpacked once to files/cosmetics/<id> (size-capped, no path escapes). Manifest layout read from the decompiled client; parser is tolerant. Customize → Root cosmetics toggles it all
+- [~] Profiles update live: Root's profile packet (container 190: name, picture, bio, banner, status) was ignored; now applied. Known users are re-fetched once per start (no more stale names/pictures from the cache)
+- [~] False "(edited)": live re-deliveries (pins, attachment processing) and polled messages whose text only differed in rendering were counted as edits; now only a real text change with Root's edit stamp counts (Root itself tags "edited" only when editedAt is set)
+- [~] Plugin "send preview" line above the message box is now off by default (Settings → Chat → Send preview)
+- [~] Updates: Settings → Updates (check, download with progress, install through Android's installer); automatic updates Off / Tell me / Download for me, checked at start at most every 6 h
 - [~] Pinned messages: overflow ⋮ → Pinned messages (tap to jump, × to unpin); long-press → Pin / Unpin (Root's MessageGrpcService/Pin*)
 - [~] Jump to… quick switcher (DMs, groups, channels, communities; unread first)
 - [~] Drafts per chat (kept across restarts, "Draft:" in the DM list)

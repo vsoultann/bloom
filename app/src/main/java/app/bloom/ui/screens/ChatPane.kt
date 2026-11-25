@@ -774,7 +774,7 @@ private fun Composer(vm: AppViewModel, haze: HazeState, modifier: Modifier) {
     var preview by remember { mutableStateOf("") }
     LaunchedEffect(text) {
         delay(250)
-        preview = if (text.isBlank() || text.any { vm.customForChar(it) != null }) "" else vm.preview(text).takeIf { it != text } ?: ""
+        preview = if (!vm.sendPreview || text.isBlank() || text.any { vm.customForChar(it) != null }) "" else vm.preview(text).takeIf { it != text } ?: ""
     }
 
     val typerIds = vm.typing[vm.selectedChannelId].orEmpty().keys.toList()

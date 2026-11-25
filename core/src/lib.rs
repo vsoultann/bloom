@@ -110,13 +110,14 @@ impl App {
             }
             Event::Edit { id, content, ts } => match self.backend.message_mut(id) {
                 Some(m) => {
+                    let changed = m.content != content;
                     if logger && m.content != content {
                         let old = std::mem::replace(&mut m.content, content);
                         m.edit_history.push(old);
                     } else {
                         m.content = content;
                     }
-                    m.edited_ts = Some(ts);
+                    if changed { m.edited_ts = Some(ts); }
                     json!({ "type": "update", "message": m })
                 }
                 None => Value::Null,

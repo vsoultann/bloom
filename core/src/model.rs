@@ -65,6 +65,15 @@ pub struct Cosmetic {
     /// Profile card background.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile_bg: Option<Fill>,
+    /// Cosmetic ids (32 hex chars) of what they wear that needs Root's art bundle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub frame: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub border: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub font: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effect: Option<String>,
     /// What they wear, e.g. ["Name effect · Aurora", "Avatar frame · Halo"].
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub worn: Vec<String>,

@@ -101,6 +101,8 @@ object Ui {
     var messageEnter by androidx.compose.runtime.mutableStateOf("rise")
     /** hide the status bar for a full-screen look */
     var hideStatusBar by androidx.compose.runtime.mutableStateOf(false)
+    /** draw people's Root avatar frames / card borders / name fonts */
+    var cosmeticFrames by androidx.compose.runtime.mutableStateOf(true)
     /** vibration feedback on taps, long-presses, sends and gestures */
     var haptics by androidx.compose.runtime.mutableStateOf(true)
     /** server icons morph: "always" · "selected" (only the open one) · "off" */
