@@ -7,3 +7,4 @@ app/src/main/jniLibs/
 *.jks
 keystore.properties
 docs/screenshots/*.raw
+.kotlin/

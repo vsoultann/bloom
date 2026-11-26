@@ -51,6 +51,7 @@ Bloom talks to Root's own servers, so you use your normal Root account, servers,
 
 **Notifications**
 - Root's notification centre (mentions, friend requests)
+- Chats as Android **conversations** (with profile pictures, Priority-capable) and calls as a **Live Update** in the Now Bar
 - Android notifications for DMs, mentions, replies, `@everyone` and more — each switchable, with *picture + message*, *message only*, *who pinged you* or *private* styles
 
 **Customise** (page design adapted from [Mochy Music](https://github.com/realidkroo/Mochy-Music))

@@ -99,10 +99,11 @@ fun YouScreen(vm: AppViewModel, onBack: () -> Unit) {
 
     var joined by remember { mutableStateOf<Long?>(null) }
     LaunchedEffect(me.id) { joined = runCatching { (Core.social("joined", JSONObject().put("user_id", me.id)) as Number).toLong() }.getOrNull() }
-    val version = remember { runCatching { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName }.getOrNull() ?: "?" }
-    var latest by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(Unit) { latest = latestRelease() }
-    val update = latest?.let { isNewer(it, version) } == true
+    // one update checker for the whole app (same as Settings → Updates)
+    val version = app.bloom.Updater.current
+    LaunchedEffect(Unit) { if (app.bloom.Updater.latest == null) app.bloom.Updater.check() }
+    val latest = app.bloom.Updater.latest?.version
+    val update = latest != null && app.bloom.Updater.isNewer(latest, version)
 
     // Pull the header down: it stretches, the card tilts with the finger, and past the
     // threshold the card flips over.
@@ -148,7 +149,7 @@ fun YouScreen(vm: AppViewModel, onBack: () -> Unit) {
             item(key = "version") {
                 Box(Modifier.padding(horizontal = 18.dp)) {
                     VersionCard(version, if (update) "Bloom $latest is out" else null, onCard = { uri.openUri("$Repo/releases") }) {
-                        uri.openUri(if (update) "$Repo/releases/latest" else Repo)
+                        if (update) vm.screen = app.bloom.Screen.Settings else uri.openUri(Repo)
                     }
                 }
             }
@@ -439,23 +440,3 @@ private fun PillRow(onClick: () -> Unit, leading: @Composable () -> Unit, text: 
     }
 }
 
-// ---------- update check ----------
-
-private suspend fun latestRelease(): String? = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-    runCatching {
-        val c = java.net.URL("https://api.github.com/repos/vsoultann/bloom/releases/latest").openConnection() as java.net.HttpURLConnection
-        c.setRequestProperty("Accept", "application/vnd.github+json")
-        c.connectTimeout = 6000; c.readTimeout = 6000
-        JSONObject(c.inputStream.bufferedReader().readText()).optString("tag_name").removePrefix("v").ifBlank { null }
-    }.getOrNull()
-}
-
-private fun isNewer(latest: String, current: String): Boolean {
-    fun parts(v: String) = v.split('.', '-', ' ').mapNotNull { it.toIntOrNull() }
-    val a = parts(latest); val b = parts(current)
-    for (i in 0 until maxOf(a.size, b.size)) {
-        val x = a.getOrElse(i) { 0 }; val y = b.getOrElse(i) { 0 }
-        if (x != y) return x > y
-    }
-    return false
-}

@@ -194,6 +194,7 @@ fun ServerIcon(
     onClick: () -> Unit,
     content: (@Composable () -> Unit)? = null,
 ) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val spec = LocalLook.current
     val scheme = MaterialTheme.colorScheme
     val source = remember { MutableInteractionSource() }
@@ -232,7 +233,7 @@ fun ServerIcon(
                 .contourGlow(shape, listOf(scheme.primary, scheme.tertiary, scheme.secondary), intensity = glow)
                 .graphicsLayer { this.shape = shape(); clip = true }
                 .background(bg)
-                .clickable(source, indication = null, onClick = onClick),
+                .clickable(source, indication = null) { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.SegmentTick); onClick() },
             contentAlignment = Alignment.Center,
         ) {
             if (content != null) content()

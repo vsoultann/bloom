@@ -7,6 +7,38 @@
 //! client token and the user's hub server, which serves every other call.
 
 pub mod cosmetics;
+
+/// Profile fetch that runs its network part without holding the core lock.
+pub struct UserGetJob {
+    client: Client,
+    user: (u64, u64),
+}
+
+pub struct UserGetDone {
+    user: (u64, u64),
+    resp: cosmetics::UserGetResponse,
+    assets: Vec<(String, String, i64, u32, u32)>,
+}
+
+impl UserGetJob {
+    /// Network only: User/Get, then the picture/banner addresses (AssetGrpcService/Get).
+    pub fn run(self) -> Result<UserGetDone, String> {
+        let (h, l) = self.user;
+        let resp: cosmetics::UserGetResponse = self.client
+            .unary("/root.UserGrpcService/Get", &cosmetics::UserGetRequest { user_id: Some(proto::UserUuid { high64: h, low64: l }), language_code: "en".into() })
+            .map_err(|e| e.to_string())?;
+        let uris: Vec<String> = [resp.profile_picture_asset_uri.clone(), resp.banner_asset_uri.clone()].into_iter().flatten()
+            .map(|v| v.value).filter(|v| v.starts_with("root://asset/")).collect();
+        let mut assets = vec![];
+        if !uris.is_empty() {
+            if let Ok(body) = self.client.raw("/root.AssetGrpcService/Get", &prost::Message::encode_to_vec(&AssetGetReq { uris })) {
+                let payload = grpcweb::unframe(&body).ok().and_then(|(m, _)| m.into_iter().next()).unwrap_or_default();
+                assets = parse_asset_map(&payload);
+            }
+        }
+        Ok(UserGetDone { user: self.user, resp, assets })
+    }
+}
 pub mod hub;
 pub mod messages;
 pub mod voice;
@@ -1776,6 +1808,52 @@ impl Backend for RootBackend {
     fn remote_mutuals(&mut self, user: Id) -> Option<(Vec<Id>, Vec<Id>)> {
         self.connection_between(user)
     }
+    fn user_get_prepare(&self, user: Id) -> Option<UserGetJob> {
+        Some(UserGetJob { client: self.hub.clone(), user: self.ids.root(user)? })
+    }
+
+    fn user_get_apply(&mut self, done: UserGetDone) -> Result<serde_json::Value, String> {
+        use serde_json::json;
+        let (h, l) = done.user;
+        let r = done.resp;
+        for (uri, url, exp, w, h2) in done.assets {
+            if w > 0 && h2 > 0 { self.asset_dims.insert(uri.clone(), (w, h2)); }
+            let main = url.split_once('\n').map(|(a, _)| a.to_string()).unwrap_or(url);
+            self.asset_cache.insert(uri, (main, exp));
+        }
+        let pic = |this: &Self, v: &Option<StringValue>| v.as_ref().filter(|v| !v.value.is_empty()).and_then(|v| {
+            if v.value.starts_with("https://") { Some(v.value.clone()) } else { this.asset_cache.get(&v.value).map(|x| x.0.clone()) }
+        });
+        let avatar = pic(self, &r.profile_picture_asset_uri);
+        let banner = pic(self, &r.banner_asset_uri);
+        let bio = { let raw = r.description.clone().map(|d| d.value).unwrap_or_default(); self.render_bio(&raw) };
+        let act = r.active_cosmetics.clone().unwrap_or_default();
+        let worn: Vec<String> = act.cosmetics.iter().map(|c| {
+            let t = cosmetics::type_name(c.r#type);
+            match c.title.as_ref().map(|s| s.value.trim()).filter(|s| !s.is_empty()) { Some(n) => format!("{t} · {n}"), None => t.to_string() }
+        }).collect();
+        let name_fx = act.cosmetics.iter().filter(|c| c.r#type == cosmetics::TYPE_NAME_EFFECT).filter_map(|c| c.name_effect.as_ref()).flat_map(|m| m.fills.iter()).find_map(cosmetics::fill);
+        let bg = act.profile_background.as_ref().and_then(cosmetics::fill);
+        let id = self.ids.local(h, l);
+        let me = self.me;
+        let u = self.users.entry(id).or_insert_with(|| User {
+            id, name: r.username.clone(), display_name: r.username.clone(), hue: hue_of(h, l), status: Status::Offline, platforms: vec![],
+            bio: String::new(), pronouns: String::new(), friend_since: None, avatar_url: None, banner_url: None, status_text: String::new(),
+            bot: h & 0xFF == 9, cosmetic: Default::default(),
+        });
+        if !r.username.is_empty() { u.name = r.username.clone(); }
+        u.bio = bio;
+        if avatar.is_some() { u.avatar_url = avatar; }
+        u.banner_url = banner;
+        u.status_text = r.user_defined_status.map(|d| d.value).unwrap_or_default();
+        let mut c = Cosmetic { name: name_fx.or(u.cosmetic.name.clone()), profile_bg: bg, worn, ..Default::default() };
+        cosmetics::apply_ids(&mut c, act.cosmetics.iter().map(|x| (x.r#type, cosmetics::hex_id(&x.id))));
+        u.cosmetic = c;
+        let out = json!(u);
+        if id == me { self.me_user = Some(serde_json::from_value(out.clone()).map_err(|e| e.to_string())?); }
+        Ok(out)
+    }
+
     fn take_error(&mut self) -> Option<String> {
         self.last_error.take()
     }
@@ -1891,44 +1969,9 @@ impl Backend for RootBackend {
             // Full profile (bio, banner, status, cosmetics) — Root 0.9.46 moved these to User/Get.
             "user_get" => {
                 let uid = a.get("user").and_then(|v| v.as_u64()).ok_or("user")?;
-                let (h, l) = self.ids.root(uid).ok_or("unknown user")?;
-                let r: cosmetics::UserGetResponse = self
-                    .hub
-                    .unary("/root.UserGrpcService/Get", &cosmetics::UserGetRequest { user_id: Some(UserUuid { high64: h, low64: l }), language_code: "en".into() })
-                    .map_err(|e| e.to_string())?;
-                let pics: Vec<String> = [r.profile_picture_asset_uri.clone(), r.banner_asset_uri.clone()].into_iter().flatten().map(|v| v.value).filter(|v| !v.starts_with("https://")).collect();
-                self.resolve_assets(&pics);
-                let pic = |this: &Self, v: &Option<StringValue>| v.as_ref().filter(|v| !v.value.is_empty()).and_then(|v| {
-                    if v.value.starts_with("https://") { Some(v.value.clone()) } else { this.asset_cache.get(&v.value).map(|x| x.0.clone()) }
-                });
-                let avatar = pic(self, &r.profile_picture_asset_uri);
-                let banner = pic(self, &r.banner_asset_uri);
-                let bio = { let raw = r.description.clone().map(|d| d.value).unwrap_or_default(); self.render_bio(&raw) };
-                let act = r.active_cosmetics.clone().unwrap_or_default();
-                let worn: Vec<String> = act.cosmetics.iter().map(|c| {
-                    let t = cosmetics::type_name(c.r#type);
-                    match c.title.as_ref().map(|s| s.value.trim()).filter(|s| !s.is_empty()) { Some(n) => format!("{t} · {n}"), None => t.to_string() }
-                }).collect();
-                let name_fx = act.cosmetics.iter().filter(|c| c.r#type == cosmetics::TYPE_NAME_EFFECT).filter_map(|c| c.name_effect.as_ref()).flat_map(|m| m.fills.iter()).find_map(cosmetics::fill);
-                let bg = act.profile_background.as_ref().and_then(cosmetics::fill);
-                let id = self.ids.local(h, l);
-                let me = self.me;
-                let u = self.users.entry(id).or_insert_with(|| User {
-                    id, name: r.username.clone(), display_name: r.username.clone(), hue: hue_of(h, l), status: Status::Offline, platforms: vec![],
-                    bio: String::new(), pronouns: String::new(), friend_since: None, avatar_url: None, banner_url: None, status_text: String::new(),
-                    bot: h & 0xFF == 9, cosmetic: Default::default(),
-                });
-                if !r.username.is_empty() { u.name = r.username.clone(); }
-                u.bio = bio;
-                if avatar.is_some() { u.avatar_url = avatar; }
-                u.banner_url = banner;
-                u.status_text = r.user_defined_status.map(|d| d.value).unwrap_or_default();
-                let mut c = Cosmetic { name: name_fx.or(u.cosmetic.name.clone()), profile_bg: bg, worn, ..Default::default() };
-                cosmetics::apply_ids(&mut c, act.cosmetics.iter().map(|x| (x.r#type, cosmetics::hex_id(&x.id))));
-                u.cosmetic = c;
-                let out = json!(u);
-                if id == me { self.me_user = Some(serde_json::from_value(out.clone()).map_err(|e| e.to_string())?); }
-                Ok(out)
+                let job = self.user_get_prepare(uid).ok_or("unknown user")?;
+                let done = job.run()?;
+                self.user_get_apply(done)
             }
             // Download URLs of cosmetic art bundles (.tar.gz with manifest.json)
             "cosmetic_bundles" => {

@@ -145,7 +145,9 @@ internal fun SignedIn(vm: AppViewModel) {
     var panelOpen by remember { mutableStateOf(true) }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
     val focus = androidx.compose.ui.platform.LocalFocusManager.current
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     fun settle(open: Boolean) {
+        if (open != panelOpen) haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.GestureEnd)
         panelOpen = open
         // leaving the chat: put the keyboard away
         if (open) { keyboard?.hide(); focus.clearFocus() }
@@ -369,6 +371,7 @@ internal fun ServerRail(vm: AppViewModel) {
 
 @Composable
 internal fun ChannelPane(vm: AppViewModel) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val s = vm.selectedServer ?: return
     val scheme = MaterialTheme.colorScheme
     LazyColumn(Modifier.fillMaxSize(), contentPadding = WindowInsets.systemBars.asPaddingValues()) {
@@ -405,7 +408,7 @@ internal fun ChannelPane(vm: AppViewModel) {
                 Row(
                     Modifier.padding(horizontal = 8.dp, vertical = 1.dp).fillMaxWidth().pressScale(src, 0.96f)
                         .clip(RoundedCornerShape(LocalLook.current.rowRadius)).background(bg)
-                        .clickable(src, null) { vm.openChannel(c.id) }.padding(horizontal = 12.dp, vertical = if (vm.channelIcons) 8.dp else 10.dp),
+                        .clickable(src, null) { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick); vm.openChannel(c.id) }.padding(horizontal = 12.dp, vertical = if (vm.channelIcons) 8.dp else 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     val kindIcon = when (c.kind) { ChannelKind.ANNOUNCEMENT -> Icons.Rounded.Campaign; ChannelKind.VOICE -> Icons.Rounded.GraphicEq; ChannelKind.APP -> Icons.Rounded.Apps; else -> Icons.Rounded.Tag }
@@ -491,6 +494,7 @@ internal fun FriendsPane(vm: AppViewModel) {
 
 @Composable
 internal fun DmList(vm: AppViewModel) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val scheme = MaterialTheme.colorScheme
     if (vm.dms.isEmpty()) {
         Text("No conversations yet", color = scheme.onSurfaceVariant, modifier = Modifier.padding(20.dp))
@@ -513,7 +517,7 @@ internal fun DmList(vm: AppViewModel) {
                 Modifier.padding(horizontal = 8.dp, vertical = 2.dp).fillMaxWidth().pressScale(src, 0.97f)
                     // shaped background, not a clip: avatar frames may reach past the picture
                     .background(bg, RoundedCornerShape(LocalLook.current.rowRadius))
-                    .combinedClickable(src, null, onLongClick = { sheetFor = d.id }) { vm.openDm(d.id) }.padding(10.dp),
+                    .combinedClickable(src, null, onLongClick = { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress); sheetFor = d.id }) { haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.ContextClick); vm.openDm(d.id) }.padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (other != null) Avatar(other.displayName, other.hue, 44.dp, userId = other.id, status = other.status)

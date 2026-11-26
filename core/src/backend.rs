@@ -102,6 +102,10 @@ pub trait Backend: Send {
     /// Tell others we're typing in `channel`.
     fn set_typing(&mut self, _channel: Id) {}
     /// Last non-fatal error (e.g. a failed send), cleared when read.
+    /// Lock-free profile fetch, phase 1: what the network part needs (None = use the normal path).
+    fn user_get_prepare(&self, _user: Id) -> Option<crate::rootapi::UserGetJob> { None }
+    /// Phase 3: apply the fetched profile (under the lock again).
+    fn user_get_apply(&mut self, _done: crate::rootapi::UserGetDone) -> Result<serde_json::Value, String> { Err("unsupported".into()) }
     fn take_error(&mut self) -> Option<String> {
         None
     }

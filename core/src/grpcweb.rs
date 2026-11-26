@@ -153,6 +153,7 @@ fn percent_decode(s: &str) -> String {
     String::from_utf8_lossy(&out).into_owned()
 }
 
+#[derive(Clone)]
 pub struct Client {
     agent: ureq::Agent,
     pub base: String,

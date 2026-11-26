@@ -349,8 +349,35 @@ impl App {
 }
 
 /// Entry point used by both JNI and tests.
+/// Profile fetch without holding the core lock across the network: prepare (locked) →
+/// User/Get + asset lookup (unlocked) → apply (locked). Chat, polling and sends no longer wait
+/// behind profile/picture loading. None = not available, use the normal path.
+fn user_get_unlocked(args: &Value) -> Option<Result<Value, String>> {
+    let uid = args.get("user").and_then(Value::as_u64)?;
+    let job = {
+        let guard = APP.lock().unwrap_or_else(|p| p.into_inner());
+        let app = guard.as_ref()?;
+        if app.mode != Mode::Root { return None; }
+        app.backend.user_get_prepare(uid)?
+    };
+    let done = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job.run())) {
+        Ok(r) => r,
+        Err(_) => Err("internal error in user_get".into()),
+    };
+    let done = match done { Ok(d) => d, Err(e) => return Some(Err(e)) };
+    let mut guard = APP.lock().unwrap_or_else(|p| p.into_inner());
+    let app = guard.as_mut()?;
+    Some(std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| app.backend.user_get_apply(done))).unwrap_or_else(|_| Err("internal error in user_get".into())))
+}
+
 pub fn call(method: &str, args: &str) -> String {
     let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    if method == "social_user_get" {
+        if let Some(res) = user_get_unlocked(&args) {
+            if let Err(e) = &res { log::write("error", &format!("{method}: {e}")); }
+            return match res { Ok(v) => json!({ "ok": v }).to_string(), Err(e) => json!({ "err": e }).to_string() };
+        }
+    }
     let mut guard = match APP.lock() {
         Ok(g) => g,
         Err(p) => p.into_inner(),

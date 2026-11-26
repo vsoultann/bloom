@@ -9,6 +9,7 @@ import androidx.activity.viewModels
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import app.bloom.ui.components.LocalAvatarUrls
 import app.bloom.ui.components.LocalAvatars
@@ -149,12 +150,12 @@ class MainActivity : ComponentActivity() {
             val meId = vm.me?.id
             val pic = vm.myAvatar
             val avatars = remember(meId, pic) { if (meId != null && pic != null) mapOf(meId to pic) else emptyMap() }
-            val avatarUrls = remember(vm.users.toMap()) { vm.users.mapNotNull { (id, u) -> u.avatarUrl?.let { id to it } }.toMap() }
+            // derived: recomputed when users change, and the screen only recomposes if the result differs
+            val avatarUrls by remember { androidx.compose.runtime.derivedStateOf { vm.users.mapNotNull { (id, u) -> u.avatarUrl?.let { id to it } }.toMap() } }
             // Root cosmetics: avatar frames everywhere; fetch art bundles for everyone we can see
-            val frames = remember(vm.users.toMap()) { vm.users.mapNotNull { (id, u) -> u.frameId?.let { id to it } }.toMap() }
-            androidx.compose.runtime.LaunchedEffect(vm.users.toMap()) {
-                app.bloom.ui.components.CosmeticStore.request(this@MainActivity, vm.users.values.flatMap { listOf(it.frameId, it.borderId, it.fontId) })
-            }
+            val frames by remember { androidx.compose.runtime.derivedStateOf { vm.users.mapNotNull { (id, u) -> u.frameId?.let { id to it } }.toMap() } }
+            val cosmeticIds by remember { androidx.compose.runtime.derivedStateOf { vm.users.values.flatMap { listOfNotNull(it.frameId, it.borderId, it.fontId) }.toSet() } }
+            androidx.compose.runtime.LaunchedEffect(cosmeticIds) { app.bloom.ui.components.CosmeticStore.request(this@MainActivity, cosmeticIds) }
             // calls ask for the microphone first, then continue
             val micAsk = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.RequestPermission()) { granted ->
                 if (granted) vm.voice.retryJoin() else { vm.voice.needsMic = null; vm.error = "Bloom needs the microphone for calls" }
