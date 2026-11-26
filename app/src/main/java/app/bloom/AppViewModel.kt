@@ -19,6 +19,7 @@ import androidx.lifecycle.viewModelScope
 import app.bloom.core.*
 import app.bloom.core.AuthMode
 import app.bloom.voice.VoiceManager
+import app.bloom.voice.VoiceService
 import app.bloom.ui.screens.Clock
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -692,6 +693,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 Core.saveCache()
             }
             refreshing = false
+            // your own full profile (decorations, banner, bio) after the refresh settled
+            me?.id?.let { refreshUser(it) }
             // keep the snapshot fresh while the app is open
             while (isActive) { delay(60_000); runCatching { Core.saveCache() } }
         }
@@ -804,6 +807,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(safe) {
             snapshotFlow { dms.flatMap { it.userIds }.toSet() + friends.map { it.id } }.collect { delay(1500); ensureFullProfiles(it) }
         }
+        // Now Bar / notification buttons
+        VoiceService.onHangUp = { viewModelScope.launch(safe) { voice.leave() } }
+        VoiceService.onMute = { viewModelScope.launch(safe) { voice.toggleMute() } }
         viewModelScope.launch(safe) {
             snapshotFlow { voice.error }.collect { e -> if (e != null) { error = "Call: $e"; runCatching { Core.log("voice", e) } } }
         }
@@ -933,7 +939,25 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var callExpanded by mutableStateOf(false)
 
     /** Start (or join) a call and show it full screen. */
-    fun startCall(channelId: Long, title: String) { callExpanded = true; voice.join(channelId, title) }
+    fun startCall(channelId: Long, title: String) {
+        callExpanded = true
+        voice.join(channelId, title)
+        // the other person's picture on the Live Update (1:1 DMs)
+        val other = dms.firstOrNull { it.id == channelId }?.userIds?.singleOrNull()?.let { users[it] }
+        other?.avatarUrl?.let { url ->
+            viewModelScope.launch(safe) {
+                val ctx = getApplication<Application>()
+                val req = coil3.request.ImageRequest.Builder(ctx).data(url).size(192).build()
+                val bmp: android.graphics.Bitmap? = runCatching {
+                    (coil3.SingletonImageLoader.get(ctx).execute(req).image as? coil3.BitmapImage)?.bitmap
+                }.getOrNull()
+                if (bmp != null && voice.channelId == channelId) {
+                    VoiceService.avatar = bmp.copy(android.graphics.Bitmap.Config.ARGB_8888, false)
+                    VoiceService.update(ctx, voice.callTitle, voice.connectedAt ?: 0L, voice.muted, voice.cameraOn, voice.screenOn)
+                }
+            }
+        }
+    }
 
     fun acceptCall() {
         val c = incomingCall ?: return

@@ -119,7 +119,20 @@ class VoiceManager(private val app: Context) {
     /** Step-by-step call trace in Settings → Logs & crashes (so a failed call says where). */
     private fun trace(step: String) { scope.launch { runCatching { Core.log("call", step) } }; android.util.Log.i("BloomCall", step) }
 
+    /** shown on the call's Live Update notification */
+    var callTitle = ""; private set
+
+    init {
+        // keep the Live Update (Now Bar) in step with the call
+        scope.launch {
+            androidx.compose.runtime.snapshotFlow { listOf(channelId, connectedAt, muted, cameraOn, screenOn) }.collect {
+                if (channelId != null) VoiceService.update(app, callTitle, connectedAt ?: 0L, muted, cameraOn, screenOn)
+            }
+        }
+    }
+
     fun join(channel: Long, title: String) {
+        callTitle = title
         trace("join requested ($channel) · in=$channelId connecting=$connecting")
         if (channelId == channel || connecting) return
         if (app.checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != android.content.pm.PackageManager.PERMISSION_GRANTED) {

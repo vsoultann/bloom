@@ -72,6 +72,8 @@ class MainActivity : ComponentActivity() {
 
     /** Tapped a message notification: open that chat once the app is ready. */
     private fun openFrom(intent: android.content.Intent?) {
+        // tapped the ongoing call (notification / Now Bar): show the call full screen
+        if (intent?.getBooleanExtra("open_call", false) == true) { intent.removeExtra("open_call"); vm.callExpanded = true; return }
         val ch = intent?.getLongExtra(app.bloom.notify.Notifier.EXTRA_CHANNEL, 0L) ?: 0L
         if (ch == 0L) return
         val msg = intent?.getLongExtra(app.bloom.notify.Notifier.EXTRA_MESSAGE, 0L) ?: 0L

@@ -187,9 +187,15 @@ fun ChatPane(vm: AppViewModel, onMenu: () -> Unit, modifier: Modifier = Modifier
     // the newest message (not the count): loading older history changes the count too, and
     // that used to yank the list mid-drag. Never while your finger is on the list.
     val newestId = msgs.lastOrNull()?.id
+    val newestMine = msgs.lastOrNull()?.authorId == vm.me?.id
     LaunchedEffect(newestId) {
-        if (newestId != null && listState.firstVisibleItemIndex <= 1 && !listState.isScrollInProgress) listState.animateScrollToItem(0)
+        if (newestId == null) return@LaunchedEffect
+        // your own sends always bring you down; others only when you're already there
+        if ((newestMine && listState.firstVisibleItemIndex < 30) || (listState.firstVisibleItemIndex <= 1 && !listState.isScrollInProgress)) listState.animateScrollToItem(0)
     }
+    // sending media: the upload row appears at the bottom — glide down to it
+    val outCount = vm.outgoing.size
+    LaunchedEffect(outCount) { if (outCount > 0) listState.animateScrollToItem(0) }
 
     // The chat slides over the server/channel layer, so it must be opaque.
     Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
@@ -500,10 +506,16 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
     val enterAnim = remember(m.id) {
         androidx.compose.animation.core.Animatable(if (System.currentTimeMillis() / 1000 - m.ts > 5 || enterStyle == "none") 1f else 0f)
     }
+    // live arrivals also glow for a moment so you can see what's new
+    val arrival = remember(m.id) { androidx.compose.animation.core.Animatable(if (enterAnim.value < 1f && enterStyle != "none") 1f else 0f) }
     LaunchedEffect(m.id) {
         if (enterAnim.value < 1f) {
             if (!app.bloom.ui.theme.Ui.animations) enterAnim.snapTo(1f)
-            else enterAnim.animateTo(1f, Motion.tween(460, EnterEasing))
+            else {
+                launch { arrival.animateTo(0f, Motion.tween(1400, androidx.compose.animation.core.LinearOutSlowInEasing)) }
+                // expressive: a little bounce at the end instead of a flat ease
+                enterAnim.animateTo(1f, Motion.spring(0.72f, 380f))
+            }
         }
     }
 
@@ -518,22 +530,29 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
             .fillMaxWidth()
             .graphicsLayer {
                 val p = enterAnim.value
-                if (p < 1f) {
+                if (p != 1f) {
                     // opacity arrives a little ahead of position, so it never looks "late"
-                    alpha = (p * 1.35f).coerceAtMost(1f)
-                    if (enterStyle == "rise" || enterStyle == "blur") translationY = (1f - p) * 12.dp.toPx()
+                    alpha = (p * 1.35f).coerceIn(0f, 1f)
+                    if (enterStyle == "rise" || enterStyle == "blur") {
+                        translationY = (1f - p) * 36.dp.toPx()
+                        val k = 0.94f + 0.06f * p
+                        scaleX = k; scaleY = k
+                        transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 1f)
+                    }
                     if (enterStyle == "blur" && app.bloom.ui.theme.Ui.elementBlur && app.bloom.ui.theme.Ui.effectsOn) {
                         // most of the blur clears early (squared falloff); whole-pixel radii reuse
                         // cached effects, and below 1px there's nothing left to see, so no snap
                         val r = ((1f - p) * (1f - p) * 9.dp.toPx()).toInt()
                         renderEffect = if (r >= 1) blurEffect(r) else null
                     } else renderEffect = null
-                } else { alpha = 1f; translationY = 0f; renderEffect = null }
+                } else { alpha = 1f; translationY = 0f; scaleX = 1f; scaleY = 1f; renderEffect = null }
             }
             .drawBehind {
                 // tints are read here (draw phase), so a flash or reply highlight never recomposes the message
                 val bar = androidx.compose.ui.geometry.Size(3.dp.toPx(), size.height)
                 if (deletedTint > 0.01f) drawRect(scheme.errorContainer.copy(alpha = 0.25f * deletedTint))
+                val glow = arrival.value
+                if (glow > 0.01f) { drawRect(scheme.primary.copy(alpha = 0.16f * glow)); drawRect(scheme.primary.copy(alpha = glow), size = bar) }
                 if (forMe) { drawRect(scheme.primary.copy(alpha = 0.12f)); drawRect(scheme.primary, size = bar) }
                 if (flash > 0.01f) drawRect(scheme.primary.copy(alpha = 0.22f * flash))
                 if (replyingThis > 0.01f) { drawRect(scheme.tertiary.copy(alpha = 0.16f * replyingThis)); drawRect(scheme.tertiary.copy(alpha = replyingThis), size = bar) }

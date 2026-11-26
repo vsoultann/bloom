@@ -198,9 +198,16 @@ pub fn parse_hex_id(s: &str) -> Option<CosmeticUuid> {
     Some(CosmeticUuid { high64: u64::from_str_radix(&s[..16], 16).ok()?, low64: u64::from_str_radix(&s[16..], 16).ok()? })
 }
 
-/// (type, id) pairs → the bundle-backed slots of a [Cosmetic].
+/// (type, id) pairs from a FULL cosmetic list (User/Get) → all bundle-backed slots of a [Cosmetic].
 pub fn apply_ids(c: &mut crate::model::Cosmetic, items: impl Iterator<Item = (i32, Option<String>)>) {
-    c.frame = None; c.border = None; c.font = None; c.effect = None;
+    c.frame = None; c.border = None;
+    apply_visible_ids(c, items);
+}
+
+/// Same, from a "visible" list (user lists, packet 718). Root only puts name fonts and name
+/// effects there (isVisibleCosmeticType), so frames/borders we already know are kept.
+pub fn apply_visible_ids(c: &mut crate::model::Cosmetic, items: impl Iterator<Item = (i32, Option<String>)>) {
+    c.font = None; c.effect = None;
     for (t, id) in items {
         match t {
             TYPE_AVATAR_FRAME => c.frame = id,

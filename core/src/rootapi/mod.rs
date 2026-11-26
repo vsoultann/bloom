@@ -521,6 +521,12 @@ impl RootBackend {
         let mut u = u;
         u.avatar_url = r.profile_picture_asset_uri.as_ref().and_then(|v| self.asset_cache.get(&v.value)).map(|x| x.0.clone());
         u.banner_url = r.banner_asset_uri.as_ref().and_then(|v| self.asset_cache.get(&v.value)).map(|x| x.0.clone());
+        // GetSelf carries no cosmetics (and since Root 0.9.46 maybe no bio/banner): keep what User/Get gave us
+        if let Some(old) = self.users.get(&id) {
+            u.cosmetic = old.cosmetic.clone();
+            if u.bio.is_empty() { u.bio = old.bio.clone(); }
+            if u.banner_url.is_none() { u.banner_url = old.banner_url.clone(); }
+        }
         self.users.insert(id, u.clone());
         self.me_user = Some(u);
         Ok(())
@@ -877,7 +883,7 @@ impl RootBackend {
                 bot: h & 0xFF == 9,
                 cosmetic: {
                     let mut c = Cosmetic { name: name_fx, ..Default::default() };
-                    cosmetics::apply_ids(&mut c, u.active_visible_cosmetics.iter().map(|v| (v.r#type, cosmetics::hex_id(&v.id))));
+                    cosmetics::apply_visible_ids(&mut c, u.active_visible_cosmetics.iter().map(|v| (v.r#type, cosmetics::hex_id(&v.id))));
                     c
                 },
             };
@@ -889,7 +895,8 @@ impl RootBackend {
                     friend_since: old.friend_since.or(user.friend_since),
                     bio: if user.bio.is_empty() { old.bio.clone() } else { user.bio },
                     banner_url: user.banner_url.or_else(|| old.banner_url.clone()),
-                    cosmetic: Cosmetic { profile_bg: old.cosmetic.profile_bg.clone(), worn: old.cosmetic.worn.clone(), ..user.cosmetic },
+                    // lists carry only name font/effect: keep frame, border, background we learned from User/Get
+                    cosmetic: Cosmetic { profile_bg: old.cosmetic.profile_bg.clone(), worn: old.cosmetic.worn.clone(), frame: old.cosmetic.frame.clone(), border: old.cosmetic.border.clone(), ..user.cosmetic },
                     ..user
                 },
                 None => user,
@@ -1398,7 +1405,7 @@ impl RootBackend {
                     let Ok(pk) = cosmetics::SetActiveVisiblePacket::decode(p.body.as_slice()) else { return vec![] };
                     let ids: Vec<(i32, Option<String>)> = pk.active_visible_cosmetics.iter().map(|v| (v.r#type, cosmetics::hex_id(&v.id))).collect();
                     let uid = pk.user_id.as_ref().map(|u| self.ids.local(u.high64, u.low64));
-                    if let Some(user) = uid.and_then(|id| self.users.get_mut(&id)) { cosmetics::apply_ids(&mut user.cosmetic, ids.into_iter()); }
+                    if let Some(user) = uid.and_then(|id| self.users.get_mut(&id)) { cosmetics::apply_visible_ids(&mut user.cosmetic, ids.into_iter()); }
                     (pk.user_id, Some(cosmetics::name_effect(&pk.active_visible_cosmetics)), None)
                 } else {
                     let Ok(pk) = cosmetics::SetProfileBackgroundPacket::decode(p.body.as_slice()) else { return vec![] };
