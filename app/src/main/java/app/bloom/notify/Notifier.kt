@@ -51,6 +51,10 @@ object Notifier {
 
     private var ready = false
 
+    /** recent lines per chat, so a conversation notification shows more than the last message */
+    private data class Line(val text: String, val at: Long, val person: Person)
+    private val history = HashMap<Long, ArrayDeque<Line>>()
+
     fun ensureChannels(ctx: Context) {
         if (ready) return
         val nm = ctx.getSystemService(NotificationManager::class.java)
@@ -90,10 +94,30 @@ object Notifier {
         }
         val pi = PendingIntent.getActivity(ctx, it.channelId.toInt(), open, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
 
+        // conversation: a long-lived shortcut per chat lets Android show it under "Conversations"
+        // with the person's picture, and lets you make it a Priority conversation
+        val shortcutId = "chat_${it.channelId}"
+        val convName = if (private) "Bloom" else (title ?: it.senderName)
+        runCatching {
+            val sc = androidx.core.content.pm.ShortcutInfoCompat.Builder(ctx, shortcutId)
+                .setShortLabel(convName.take(24)).setLongLabel(convName)
+                .setLongLived(true)
+                .setIsConversation()
+                .setPerson(sender)
+                .setLocusId(androidx.core.content.LocusIdCompat(shortcutId))
+                .setIcon(icon ?: IconCompat.createWithResource(ctx, android.R.drawable.stat_notify_chat))
+                .setIntent(Intent(open).setAction(Intent.ACTION_VIEW))
+                .setCategories(setOf("app.bloom.category.CONVERSATION"))
+                .build()
+            androidx.core.content.pm.ShortcutManagerCompat.pushDynamicShortcut(ctx, sc)
+        }
+        val lines = history.getOrPut(it.channelId) { ArrayDeque() }
+        lines.addLast(Line(body, System.currentTimeMillis(), sender))
+        while (lines.size > 6) lines.removeFirst()
         val style = NotificationCompat.MessagingStyle(me)
             .setConversationTitle(title)
             .setGroupConversation(title != null)
-            .addMessage(body, System.currentTimeMillis(), sender)
+        for (l in lines) style.addMessage(l.text, l.at, l.person)
         val n = NotificationCompat.Builder(ctx, it.why)
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setStyle(style)
@@ -105,6 +129,9 @@ object Notifier {
             .setContentIntent(pi)
             .setAutoCancel(true)
             .setGroup("chat_${it.channelId}")
+            .setShortcutId(shortcutId)
+            .setLocusId(androidx.core.content.LocusIdCompat(shortcutId))
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         runCatching { NotificationManagerCompat.from(ctx).notify(it.channelId.toInt(), n) }
     }
@@ -137,7 +164,7 @@ object Notifier {
     }
 
     /** Clear a chat's notification once you open it. */
-    fun clear(ctx: Context, channelId: Long) = runCatching { NotificationManagerCompat.from(ctx).cancel(channelId.toInt()) }
+    fun clear(ctx: Context, channelId: Long) = runCatching { history.remove(channelId); NotificationManagerCompat.from(ctx).cancel(channelId.toInt()) }
 
     private suspend fun avatar(ctx: Context, url: String?): Bitmap? {
         if (url == null) return null

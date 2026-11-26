@@ -1,4 +1,7 @@
+@file:OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 package app.bloom.ui.screens
+
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -49,17 +52,29 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     var query by remember { mutableStateOf("") }
     val list = vm.plugins.filter { query.isBlank() || it.name.contains(query, true) || it.description.contains(query, true) }
+    // Large title that collapses into a pinned bar: content never slides under the clock,
+    // and the bottom respects the gesture bar and keyboard.
+    val scroll = TopAppBarDefaults.exitUntilCollapsedScrollBehavior()
+    Scaffold(
+        Modifier.fillMaxSize().nestedScroll(scroll.nestedScrollConnection),
+        containerColor = scheme.surface,
+        topBar = {
+            LargeTopAppBar(
+                title = { Text("Settings") },
+                navigationIcon = { IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") } },
+                scrollBehavior = scroll,
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = scheme.surface, scrolledContainerColor = scheme.surfaceContainer),
+            )
+        },
+    ) { inner ->
     LazyColumn(
-        Modifier.fillMaxSize().background(scheme.surface),
-        contentPadding = WindowInsets.systemBars.union(WindowInsets.ime).asPaddingValues(),
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(
+            top = inner.calculateTopPadding() + 4.dp,
+            bottom = WindowInsets.navigationBars.union(WindowInsets.ime).asPaddingValues().calculateBottomPadding() + 24.dp,
+        ),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item {
-            Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Rounded.ArrowBack, "Back") }
-                Text("Settings", style = MaterialTheme.typography.displaySmall)
-            }
-        }
         // search (like Mochy's customize page): filters the sections below
         item {
             OutlinedTextField(
@@ -107,7 +122,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
                         Text("Pure black (AMOLED)", style = MaterialTheme.typography.bodyLarge)
                         Text("Saves battery on OLED screens", style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                     }
-                    Switch(vm.amoled, { vm.chooseAmoled(it) })
+                    BloomSwitch(vm.amoled, { vm.chooseAmoled(it) })
                 }
             }
         }
@@ -144,6 +159,7 @@ fun SettingsScreen(vm: AppViewModel, onBack: () -> Unit) {
         }
         items(list, key = { it.id }) { p -> PluginCard(vm, p, Modifier.animateItem(placementSpec = Motion.spatial())) }
         item { Spacer(Modifier.height(24.dp)) }
+    }
     }
 }
 
@@ -262,7 +278,7 @@ private fun PluginCard(vm: AppViewModel, p: Plugin, modifier: Modifier) {
                 Text(p.description, style = MaterialTheme.typography.bodySmall, color = sub)
                 if (configurable) Text(if (expanded) "Tap to close" else "Tap to configure", style = MaterialTheme.typography.labelSmall, color = scheme.primary)
             }
-            Switch(p.enabled, { vm.togglePlugin(p.id, it) })
+            BloomSwitch(p.enabled, { vm.togglePlugin(p.id, it) })
         }
         if (expanded && configurable) {
             Spacer(Modifier.height(12.dp))
@@ -375,7 +391,7 @@ private fun BackgroundShapesSection(vm: AppViewModel) {
     ExpandableSection("Background shapes", if (b.enabled) "${b.count} shapes · blur ${b.blur.toInt()}" else "Off", Icons.Rounded.BubbleChart) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Show shapes", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-            Switch(b.enabled, { vm.updateBgShapes(b.copy(enabled = it)) })
+            BloomSwitch(b.enabled, { vm.updateBgShapes(b.copy(enabled = it)) })
         }
         if (b.enabled) {
             SliderRow("Number of shapes", b.count.toFloat(), 1f..16f, { it.toInt().toString() }, steps = 14) { vm.updateBgShapes(b.copy(count = it.toInt())) }
@@ -452,7 +468,7 @@ private fun NotificationSection(vm: AppViewModel) {
                     Text(title, style = MaterialTheme.typography.bodyLarge)
                     Text(sub, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                 }
-                Switch(on, { vm.setPref(key, it) }, enabled = enabled)
+                BloomSwitch(on, { vm.setPref(key, it) }, enabled = enabled)
             }
         }
         toggle("Notifications", "Show message notifications from Root", vm.notifOn, "notif_on")
@@ -497,7 +513,7 @@ private fun ChatSection(vm: AppViewModel) {
                     Text(title, style = MaterialTheme.typography.bodyLarge)
                     Text(sub, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
                 }
-                Switch(on, { vm.setPref(key, it) })
+                BloomSwitch(on, { vm.setPref(key, it) })
             }
         }
         toggle("12-hour time", "Show 3:45 PM instead of 15:45", vm.clock12h, "clock_12h")
@@ -595,7 +611,8 @@ private fun UpdatesSection(vm: AppViewModel) {
             if ((st == app.bloom.Updater.State.AVAILABLE || st == app.bloom.Updater.State.READY) && !r?.notes.isNullOrBlank())
                 Text(r!!.notes.take(600), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text("Automatic updates", style = MaterialTheme.typography.titleSmall)
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            @OptIn(ExperimentalLayoutApi::class)
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 listOf("off" to "Off", "notify" to "Tell me", "download" to "Download for me").forEach { (k, l) ->
                     FilterChip(vm.autoUpdate == k, { vm.chooseAutoUpdate(k) }, { Text(l) })
                 }

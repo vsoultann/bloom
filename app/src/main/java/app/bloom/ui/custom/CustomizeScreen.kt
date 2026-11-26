@@ -64,6 +64,7 @@ import app.bloom.notify.NowPlayingService
 import app.bloom.ui.components.MorphingLoader
 import app.bloom.ui.components.rememberLivingShape
 import app.bloom.ui.screens.EmojiGlyph
+import app.bloom.ui.screens.BloomSwitch
 import app.bloom.ui.theme.Motion
 import app.bloom.ui.theme.Ui
 import kotlinx.coroutines.launch
@@ -100,7 +101,7 @@ fun CustomizeScreen(vm: AppViewModel, onBack: () -> Unit) {
     Box(Modifier.fillMaxSize().background(scheme.surface)) {
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 48.dp),
+        contentPadding = PaddingValues(bottom = 48.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()),
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
@@ -281,7 +282,7 @@ private fun ToggleCard(title: String, sub: String, on: Boolean, enabled: Boolean
             Text(title, style = SliderTitle, color = scheme.onSurface)
             Text(sub, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         }
-        Switch(on, onChange, enabled = enabled)
+        BloomSwitch(on, onChange, enabled = enabled)
     }
 }
 

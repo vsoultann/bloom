@@ -71,7 +71,7 @@ fun RolesScreen(vm: AppViewModel, serverId: Long, onBack: () -> Unit) {
         OutlinedTextField(query, { query = it }, placeholder = { Text("Search ${roles.size} roles") }, singleLine = true, leadingIcon = { Icon(Icons.Rounded.Search, null) },
             shape = RoundedCornerShape(50), modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp))
         if (roles.isEmpty()) Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) { app.bloom.ui.components.MorphingLoader(size = 40.dp) }
-        LazyColumn(contentPadding = PaddingValues(bottom = 32.dp)) {
+        LazyColumn(contentPadding = PaddingValues(bottom = 32.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())) {
             items(roles.filter { query.isBlank() || it.name.contains(query, true) }, key = { it.id }) { r ->
                 val c = roleColor(r.color, scheme.onSurface)
                 Row(

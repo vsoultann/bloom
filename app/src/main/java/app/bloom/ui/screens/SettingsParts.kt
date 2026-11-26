@@ -13,6 +13,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,27 +44,55 @@ fun ExpandableSection(
 ) {
     var open by rememberSaveableBool(title, initiallyOpen)
     val scheme = MaterialTheme.colorScheme
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
     val spin by animateFloatAsState(if (open) 180f else 0f, Motion.spatial(), label = "chev")
+    // expressive: the icon badge morphs rounded-square → circle as the section opens
+    val morph by animateFloatAsState(if (open) 1f else 0f, Motion.spring(0.6f, 420f), label = "badge")
+    val bg by animateColorAsState(if (open) scheme.surfaceContainerHigh else scheme.surfaceContainer, Motion.effects(), label = "secBg")
     Column(
         Modifier.padding(horizontal = 12.dp).fillMaxWidth()
             .clip(RoundedCornerShape(LocalLook.current.cardRadius))
-            .background(scheme.surfaceContainer)
-            .animateContentSize(Motion.spatial()),
+            .background(bg)
+            .animateContentSize(Motion.spring(0.82f, 380f)),
     ) {
         Row(
-            Modifier.fillMaxWidth().clickable { open = !open }.padding(16.dp),
+            Modifier.fillMaxWidth().clickable {
+                haptic.performHapticFeedback(if (open) androidx.compose.ui.hapticfeedback.HapticFeedbackType.ToggleOff else androidx.compose.ui.hapticfeedback.HapticFeedbackType.ToggleOn)
+                open = !open
+            }.padding(horizontal = 14.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(icon, null, tint = scheme.primary)
-            Spacer(Modifier.width(16.dp))
+            Box(
+                Modifier.size(40.dp).clip(RoundedCornerShape(percent = (28 + 22 * morph).toInt().coerceIn(0, 50)))
+                    .background(if (open) scheme.primary else scheme.secondaryContainer),
+                contentAlignment = Alignment.Center,
+            ) { Icon(icon, null, Modifier.size(22.dp), tint = if (open) scheme.onPrimary else scheme.onSecondaryContainer) }
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(title, style = MaterialTheme.typography.titleMedium)
-                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 2)
             }
             Icon(Icons.Rounded.ExpandMore, if (open) "Collapse" else "Expand", Modifier.graphicsLayer { rotationZ = spin })
         }
-        if (open) Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp), content = content)
+        if (open) Column(Modifier.padding(start = 14.dp, end = 14.dp, bottom = 14.dp), verticalArrangement = Arrangement.spacedBy(10.dp), content = content)
     }
+}
+
+/** Material 3 Expressive switch: check / cross in the thumb, haptic tick on toggle. */
+@Composable
+fun BloomSwitch(checked: Boolean, onCheckedChange: ((Boolean) -> Unit)?, modifier: Modifier = Modifier, enabled: Boolean = true) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+    Switch(
+        checked,
+        onCheckedChange?.let { cb -> { v: Boolean ->
+            haptic.performHapticFeedback(if (v) androidx.compose.ui.hapticfeedback.HapticFeedbackType.ToggleOn else androidx.compose.ui.hapticfeedback.HapticFeedbackType.ToggleOff)
+            cb(v)
+        } },
+        modifier, enabled = enabled,
+        thumbContent = {
+            Icon(if (checked) Icons.Rounded.Check else Icons.Rounded.Close, null, Modifier.size(SwitchDefaults.IconSize))
+        },
+    )
 }
 
 @Composable

@@ -114,7 +114,7 @@ fun YouScreen(vm: AppViewModel, onBack: () -> Unit) {
     val collapsed by remember { derivedStateOf { list.firstVisibleItemIndex > 0 || list.firstVisibleItemScrollOffset > 420 } }
 
     Box(Modifier.fillMaxSize().background(scheme.surfaceContainerLowest)) {
-        LazyColumn(state = list, contentPadding = PaddingValues(bottom = 40.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        LazyColumn(state = list, contentPadding = PaddingValues(bottom = 40.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             item(key = "header") {
                 Header(
                     vm = vm, joined = joined, pull = { pull.value }, flip = { flip.value }, tilt = { tilt },
