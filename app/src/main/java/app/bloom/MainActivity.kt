@@ -89,6 +89,23 @@ class MainActivity : ComponentActivity() {
         vm.saveCacheNow()
     }
 
+    /**
+     * Every launch of another app goes through here (pickers, camera, links, settings,
+     * share sheet, installer). If that app is missing or Android refuses, say so instead of
+     * crashing.
+     */
+    @Deprecated("framework override")
+    override fun startActivityForResult(intent: android.content.Intent, requestCode: Int, options: Bundle?) {
+        try {
+            @Suppress("DEPRECATION")
+            super.startActivityForResult(intent, requestCode, options)
+        } catch (e: android.content.ActivityNotFoundException) {
+            android.widget.Toast.makeText(this, "No app on this phone can open that", android.widget.Toast.LENGTH_SHORT).show()
+        } catch (e: SecurityException) {
+            android.widget.Toast.makeText(this, "Android didn't allow that: ${e.message?.substringBefore(" from ")?.take(80)}", android.widget.Toast.LENGTH_LONG).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         installCrashLog()
         enableEdgeToEdge()

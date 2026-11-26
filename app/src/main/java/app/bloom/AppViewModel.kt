@@ -534,6 +534,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var error: String?
         get() = errorState.value
         set(v) {
+            // a cancelled job (left the chat, newer request) is not an error worth a toast
+            if (v != null && (v.endsWith("was cancelled") || v.contains("CancellationException"))) return
             errorState.value = v
             if (v != null) viewModelScope.launch(safe) { runCatching { Core.log("ui", v) } }
         }
@@ -897,6 +899,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var listEpoch by mutableIntStateOf(0); private set
     var loadingOlder by mutableStateOf(false); private set
 
+    private var olderBackoff = 1000L
     /** Loads older history when you scroll to the top. */
     fun loadOlder() {
         val ch = selectedChannelId ?: return
@@ -911,8 +914,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 // only a successful, empty answer means the real start of the chat
                 if (older.isEmpty()) noMoreHistory = true else if (fresh.isNotEmpty()) messages.addAll(0, fresh)
             }.onFailure { error = "Couldn't load older messages: ${it.message}" }
-            // brief pause after a failure so a dead connection isn't hammered
-            if (result.isFailure) delay(2000)
+            // back off after failures so a dead connection isn't hammered (2 s → 4 → … 30 s)
+            if (result.isFailure) { olderBackoff = (olderBackoff * 2).coerceIn(2000L, 30_000L); delay(olderBackoff) } else olderBackoff = 1000L
             loadingOlder = false
         }
     }

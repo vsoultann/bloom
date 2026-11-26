@@ -24,7 +24,7 @@ import org.json.JSONObject
  * notification access for this; Bloom never reads your notifications' content.
  */
 class NowPlayingService : NotificationListenerService() {
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + kotlinx.coroutines.CoroutineExceptionHandler { _, e -> android.util.Log.w("Bloom", "now playing", e) })
     private var msm: MediaSessionManager? = null
     private val callbacks = mutableMapOf<MediaController, MediaController.Callback>()
     private var pending: Job? = null

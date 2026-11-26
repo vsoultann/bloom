@@ -92,7 +92,11 @@ class VoiceManager(private val app: Context) {
     private val midToTrack = mutableMapOf<String, String>()
     private val trackToUser = mutableMapOf<String, Long>()
     private val sig = Mutex()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    // call failures become a visible error (vm shows it as a toast), never a crash
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+        android.util.Log.w("Bloom", "voice", e)
+        error = e.message ?: e.javaClass.simpleName
+    })
     private var statsJob: Job? = null
 
     private fun ensureFactory(): PeerConnectionFactory = factory ?: run {

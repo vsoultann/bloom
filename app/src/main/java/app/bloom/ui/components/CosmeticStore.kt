@@ -50,7 +50,8 @@ object CosmeticStore {
     val assets = mutableStateMapOf<String, CosmeticAsset?>()
     private val inFlight = HashSet<String>()
     private val lock = Mutex()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // a bad bundle must never take the app down
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO + kotlinx.coroutines.CoroutineExceptionHandler { _, e -> android.util.Log.w("Bloom", "cosmetics", e) })
     private const val MAX_PACKED = 20L * 1024 * 1024
     private const val MAX_UNPACKED = 60L * 1024 * 1024
 

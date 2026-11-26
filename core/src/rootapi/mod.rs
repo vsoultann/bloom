@@ -213,6 +213,8 @@ pub struct RootBackend {
     channel_community: HashMap<Id, Id>,
     active_channel: Option<Id>,
     last_refresh: i64,
+    /// seconds between fallback polls; grows while the network is down
+    poll_every: i64,
     pending: Vec<Event>,
     pub last_error: Option<String>,
     /// root://asset/... -> (https url, expires_at unix)
@@ -292,6 +294,7 @@ impl RootBackend {
             channel_community: snap.channel_community.into_iter().collect(),
             active_channel: None,
             last_refresh: 0,
+            poll_every: 4,
             pending: vec![],
             last_error: None,
             asset_cache: snap.assets.into_iter().filter(|a| a.2 > now + 3600).map(|(k, u, e)| (k, (u, e))).collect(),
@@ -462,6 +465,7 @@ impl RootBackend {
             channel_community: HashMap::new(),
             active_channel: None,
             last_refresh: 0,
+            poll_every: 4,
             pending: vec![],
             last_error: None,
             asset_cache: HashMap::new(),
@@ -2297,9 +2301,12 @@ impl Backend for RootBackend {
             return out;
         }
         if let Some(ch) = self.active_channel {
-            if now - self.last_refresh >= 4 {
+            // back off while offline (4 s → 8 → 16 … 60 s) instead of hammering a dead network
+            if now - self.last_refresh >= self.poll_every {
                 self.last_refresh = now;
-                if let Ok(fresh) = self.fetch_messages(ch) {
+                let r = self.fetch_messages(ch);
+                self.poll_every = if r.is_ok() { 4 } else { (self.poll_every * 2).min(60) };
+                if let Ok(fresh) = r {
                     let old = self.msgs.get(&ch).cloned().unwrap_or_default();
                     let old_ids: HashMap<Id, &Message> = old.iter().map(|m| (m.id, m)).collect();
                     for m in &fresh {

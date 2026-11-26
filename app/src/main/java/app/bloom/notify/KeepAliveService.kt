@@ -28,7 +28,10 @@ class KeepAliveService : Service() {
             .setPriority(NotificationCompat.PRIORITY_MIN)
             .setOngoing(true)
             .build()
-        ServiceCompat.startForeground(this, 7, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING)
+        // Android can refuse (background start limits, revoked permission): stop quietly instead of crashing
+        if (runCatching { ServiceCompat.startForeground(this, 7, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_REMOTE_MESSAGING) }.isFailure) {
+            stopSelf(); return START_NOT_STICKY
+        }
         return START_STICKY
     }
 

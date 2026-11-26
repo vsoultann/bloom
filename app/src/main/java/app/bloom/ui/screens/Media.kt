@@ -84,19 +84,31 @@ fun AttachSheet(vm: AppViewModel, onGifs: () -> Unit, onClose: () -> Unit) {
     val scheme = MaterialTheme.colorScheme
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(10)) { uris -> vm.addAttachments(uris); if (uris.isNotEmpty()) onClose() }
     val files = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris -> vm.addAttachments(uris); if (uris.isNotEmpty()) onClose() }
-    var cameraUri by remember { mutableStateOf<Uri?>(null) }
+    // saveable: the camera app can outlive Bloom's activity; the photo must still attach afterwards
+    var cameraUri by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf<Uri?>(null) }
     val camera = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok -> if (ok) cameraUri?.let { vm.addAttachments(listOf(it)); onClose() } }
+    fun openCamera() {
+        val dir = File(ctx.cacheDir, "captures").apply { mkdirs() }
+        val f = File(dir, "photo-${System.currentTimeMillis()}.jpg")
+        val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
+        cameraUri = uri
+        // never crash on a missing camera app or a refused permission
+        runCatching { camera.launch(uri) }.onFailure {
+            vm.error = if (it is SecurityException) "Bloom needs camera access to take photos" else "No camera app found"
+        }
+    }
+    // Bloom declares CAMERA (video calls), so Android refuses the camera app until it's granted
+    val askCamera = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) openCamera() else vm.error = "Bloom needs camera access to take photos"
+    }
 
     Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).padding(horizontal = 12.dp, vertical = 8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
             SheetOption(Icons.Rounded.PhotoLibrary, "Photos") { photos.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageAndVideo)) }
             SheetOption(Icons.Rounded.Gif, "GIFs", onGifs)
             SheetOption(Icons.Rounded.PhotoCamera, "Camera") {
-                val dir = File(ctx.cacheDir, "captures").apply { mkdirs() }
-                val f = File(dir, "photo-${System.currentTimeMillis()}.jpg")
-                val uri = FileProvider.getUriForFile(ctx, ctx.packageName + ".files", f)
-                cameraUri = uri
-                camera.launch(uri)
+                if (androidx.core.content.ContextCompat.checkSelfPermission(ctx, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) openCamera()
+                else askCamera.launch(android.Manifest.permission.CAMERA)
             }
             SheetOption(Icons.Rounded.AttachFile, "Files") { files.launch(arrayOf("*/*")) }
         }
