@@ -792,9 +792,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         profileUserId = null
         roles.clear(); serverRoles.clear(); memberRoles.clear()
         realNames.clear()
+        fullFetched.clear(); fullQueue.clear(); fullJob?.cancel()
     }
 
     init {
+        viewModelScope.launch(safe) {
+            snapshotFlow { messages.map { it.authorId }.toSet() }.collect { delay(400); ensureFullProfiles(it) }
+        }
+        viewModelScope.launch(safe) {
+            snapshotFlow { dms.flatMap { it.userIds }.toSet() + friends.map { it.id } }.collect { delay(1500); ensureFullProfiles(it) }
+        }
         viewModelScope.launch(safe) {
             snapshotFlow { voice.error }.collect { e -> if (e != null) { error = "Call: $e"; runCatching { Core.log("voice", e) } } }
         }
@@ -1283,6 +1290,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { Core.social("user_get", JSONObject().put("user", userId)) as JSONObject }
             .onSuccess { o -> putUsers(listOf(User.from(o).let { fresh -> users[userId]?.let { old -> fresh.copy(status = old.status) } ?: fresh })); if (userId == me?.id) me = users[userId] }
             .onFailure { runCatching { Core.log("profile", "user_get: ${it.message}") } }
+    }
+
+    /**
+     * Root's user lists only carry name fonts/effects; avatar frames and card borders come
+     * from the full profile (User/Get). Fetch it quietly, one person at a time, for whoever
+     * is on screen (chat authors, DMs, friends) — once per session each.
+     */
+    private val fullFetched = HashSet<Long>()
+    private val fullQueue = java.util.concurrent.LinkedBlockingDeque<Long>()
+    private var fullJob: Job? = null
+    fun ensureFullProfiles(ids: Collection<Long>) {
+        if (authMode != AuthMode.ROOT) return
+        val my = me?.id
+        // newest asks first: the open chat matters more than an old friends list
+        ids.filter { it != my && it !in fullFetched && users[it]?.bot != true }.forEach { fullFetched += it; fullQueue.offerFirst(it) }
+        if (fullJob?.isActive == true || fullQueue.isEmpty()) return
+        fullJob = viewModelScope.launch(safe) {
+            while (true) {
+                val id = fullQueue.pollFirst() ?: break
+                refreshUser(id)
+                delay(120) // leave room for the user's own requests
+            }
+        }
     }
 
     // ---- pinned messages ----

@@ -19,6 +19,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -120,10 +121,25 @@ fun RootShell(vm: AppViewModel) {
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
     LaunchedEffect(vm.channelOpens) { if (vm.channelOpens > 0) chatOpen = true }
-    BackHandler(chatOpen || vm.screen != Screen.Chat) { if (vm.screen != Screen.Chat) vm.screen = Screen.Chat else chatOpen = false }
+    // predictive back: the pushed page slides away with the gesture (Root's push/pop, live)
+    val backP = remember { androidx.compose.animation.core.Animatable(0f) }
+    androidx.activity.compose.PredictiveBackHandler(chatOpen || vm.screen != Screen.Chat) { events ->
+        try {
+            events.collect { e -> backP.snapTo(e.progress) }
+            if (vm.screen != Screen.Chat) vm.screen = Screen.Chat else chatOpen = false
+            scope.launch { backP.snapTo(0f) }
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            scope.launch { backP.animateTo(0f, rootNormal()) }
+            throw e
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(scheme.surface)) {
         AnimatedContent(
+            modifier = Modifier.graphicsLayer {
+                val p = backP.value
+                if (p > 0f) { translationX = p * size.width * 0.35f; alpha = 1f - 0.25f * p; shape = RoundedCornerShape((24 * p).dp); clip = true }
+            },
             targetState = when { vm.screen != Screen.Chat -> 2; chatOpen -> 1; else -> 0 },
             transitionSpec = {
                 if (targetState > initialState) (slideInHorizontally(rootSlow()) { it } + fadeIn(rootNormal())) togetherWith (slideOutHorizontally(rootSlow()) { -it / 4 } + fadeOut(rootNormal()))

@@ -92,8 +92,23 @@ internal fun SignedIn(vm: AppViewModel) {
     LaunchedEffect(vm.channelOpens) { if (vm.channelOpens > 0) settle(false) }
     // Settings / Edit Profile slide fully into view instead of staying behind the side panel
     LaunchedEffect(vm.screen) { if (vm.screen != Screen.Chat && panelOpen) settle(false) }
-    BackHandler(enabled = !panelOpen || vm.screen != Screen.Chat) {
-        if (vm.screen != Screen.Chat) vm.screen = Screen.Chat else settle(true)
+    // Predictive back (Android 14+): the gesture previews where you're going.
+    //  · a page (Settings, You, …) shrinks back towards the chat
+    //  · the chat slides aside to reveal the servers/channels panel
+    val backP = remember { Animatable(0f) }
+    var backFromLeft by remember { mutableStateOf(true) }
+    androidx.activity.compose.PredictiveBackHandler(enabled = !panelOpen || vm.screen != Screen.Chat) { events ->
+        val page = vm.screen != Screen.Chat
+        try {
+            events.collect { e ->
+                backFromLeft = e.swipeEdge == androidx.activity.BackEventCompat.EDGE_LEFT
+                if (page) backP.snapTo(e.progress) else offset.snapTo(e.progress * openX * 0.6f)
+            }
+            if (page) { vm.screen = Screen.Chat; scope.launch { backP.animateTo(0f, Motion.spatial()) } } else settle(true)
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            scope.launch { if (page) backP.animateTo(0f, Motion.spatial()) else offset.animateTo(0f, Motion.spatial()) }
+            throw e
+        }
     }
 
     // Profile sheet blurs & recedes everything behind it.
@@ -157,6 +172,16 @@ internal fun SignedIn(vm: AppViewModel) {
                     ),
             ) {
                 AnimatedContent(
+                    modifier = Modifier.graphicsLayer {
+                        // read in the draw phase: the gesture never recomposes the page
+                        val p = backP.value
+                        if (p > 0f) {
+                            val k = 1f - 0.1f * p
+                            scaleX = k; scaleY = k
+                            translationX = (if (backFromLeft) 1 else -1) * p * 24.dp.toPx()
+                            shape = RoundedCornerShape((28 * p).dp); clip = true
+                        }
+                    },
                     targetState = vm.screen,
                     transitionSpec = {
                         (fadeIn(Motion.effects()) + scaleIn(Motion.spatial(), initialScale = 0.92f))

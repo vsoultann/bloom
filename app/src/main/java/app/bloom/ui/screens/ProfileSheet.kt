@@ -71,7 +71,6 @@ fun ProfileSheet(vm: AppViewModel) {
     var shown by remember { mutableStateOf<User?>(null) }
     val current = vm.profileUserId?.let { vm.users[it] }
     if (current != null && current != shown) shown = current
-    BackHandler(open) { vm.closeProfile() }
 
     val scrim by animateFloatAsState(if (open) 0.45f else 0f, Motion.effects(), label = "scrim")
     val scrimOn by remember { androidx.compose.runtime.derivedStateOf { scrim > 0.001f } }
@@ -87,6 +86,16 @@ fun ProfileSheet(vm: AppViewModel) {
     var expanded by remember { mutableStateOf(false) }
     val heightFrac by animateFloatAsState(if (expanded) 1f else 0.86f, Motion.spatial(), label = "sheetH")
     LaunchedEffect(open) { if (open) { drag.snapTo(0f); expanded = false } }
+    // predictive back: the sheet follows the back gesture down, springs back if cancelled
+    androidx.activity.compose.PredictiveBackHandler(open) { events ->
+        try {
+            events.collect { e -> drag.snapTo(e.progress * 420f) }
+            vm.closeProfile()
+        } catch (e: kotlin.coroutines.cancellation.CancellationException) {
+            scope.launch { drag.animateTo(0f, Motion.spatial()) }
+            throw e
+        }
+    }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
         AnimatedVisibility(
