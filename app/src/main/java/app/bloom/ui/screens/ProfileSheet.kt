@@ -212,10 +212,6 @@ private fun ProfileCard(vm: AppViewModel, u: User, mutuals: Mutuals?, border: ap
                 listOf("@${u.name}", u.pronouns).filter { it.isNotBlank() }.joinToString(" · "),
                 style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant,
             )
-            if (u.worn.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                app.bloom.ui.components.WornCosmetics(u.worn)
-            }
             // roles in the server you're looking at
             vm.selectedServerId?.let { sid -> if (vm.authMode == app.bloom.core.AuthMode.ROOT) MemberRolesRow(vm, sid, u.id) }
             u.nowPlaying?.let { np ->

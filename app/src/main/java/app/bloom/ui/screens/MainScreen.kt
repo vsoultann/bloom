@@ -421,7 +421,8 @@ internal fun DmList(vm: AppViewModel) {
             val src = remember { MutableInteractionSource() }
             Row(
                 Modifier.padding(horizontal = 8.dp, vertical = 2.dp).fillMaxWidth().pressScale(src, 0.97f)
-                    .clip(RoundedCornerShape(LocalLook.current.rowRadius)).background(bg)
+                    // shaped background, not a clip: avatar frames may reach past the picture
+                    .background(bg, RoundedCornerShape(LocalLook.current.rowRadius))
                     .combinedClickable(src, null, onLongClick = { sheetFor = d.id }) { vm.openDm(d.id) }.padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -466,7 +467,7 @@ internal fun FriendList(vm: AppViewModel) {
             val src = remember { MutableInteractionSource() }
             Row(
                 Modifier.padding(horizontal = 8.dp, vertical = 2.dp).fillMaxWidth().pressScale(src, 0.97f)
-                    .clip(RoundedCornerShape(LocalLook.current.rowRadius)).combinedClickable(src, null, onLongClick = { sheetFor = u.id }) { vm.openProfile(u.id) }.padding(10.dp),
+                    .combinedClickable(src, null, onLongClick = { sheetFor = u.id }) { vm.openProfile(u.id) }.padding(10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Avatar(u.displayName, u.hue, 44.dp, userId = u.id, status = u.status)

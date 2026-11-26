@@ -544,7 +544,7 @@ private fun MessageBody(vm: AppViewModel, m: Message, grouped: Boolean, all: Lis
         ReplyPreview(vm, m, all, vm.compact, onJump)
         Row {
             if (!grouped && author != null) {
-                Avatar(author.displayName, author.hue, if (vm.compact) 32.dp else 40.dp, Modifier.clip(androidx.compose.foundation.shape.CircleShape).clickable { vm.openProfile(author.id) }, userId = author.id)
+                Avatar(author.displayName, author.hue, if (vm.compact) 32.dp else 40.dp, Modifier.clickable(remember { MutableInteractionSource() }, androidx.compose.material3.ripple(bounded = false, radius = if (vm.compact) 16.dp else 20.dp)) { vm.openProfile(author.id) }, userId = author.id)
             } else {
                 Spacer(Modifier.width(if (vm.compact) 32.dp else 40.dp))
             }
@@ -1244,7 +1244,7 @@ fun ChatIntro(vm: AppViewModel) {
             val people = dm.userIds.mapNotNull { vm.users[it] }
             if (people.size == 1) {
                 val u = people[0]
-                Avatar(u.displayName, u.hue, 80.dp, Modifier.clip(CircleShape).clickable { vm.openProfile(u.id) }, userId = u.id)
+                Avatar(u.displayName, u.hue, 80.dp, Modifier.clickable(remember { MutableInteractionSource() }, androidx.compose.material3.ripple(bounded = false, radius = 40.dp)) { vm.openProfile(u.id) }, userId = u.id)
                 Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(u.displayName, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
