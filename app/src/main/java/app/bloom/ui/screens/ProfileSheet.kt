@@ -154,18 +154,19 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
             awaitEachGesture { awaitFirstDown(requireUnconsumed = false); hover++ }
         },
     ) {
-        ProfileCard(vm, u, mutuals, border)
-        if (border != null && (border.scene != null || border.clientArt != null)) {
-            app.bloom.ui.components.CardBorderScene(
-                border, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                dark = app.bloom.ui.theme.LocalDark.current, hover = hover,
-            )
-        }
+        val sceneOn = border != null && (border.scene != null || border.clientArt != null)
+        val cardShape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+        val dark = app.bloom.ui.theme.LocalDark.current
+        // the scene is the card's backdrop (Root draws it behind the content, so text stays crisp);
+        // only the shimmer outline sits on top
+        if (sceneOn) app.bloom.ui.components.CardBorderScene(border!!, cardShape, dark, hover, outline = false)
+        ProfileCard(vm, u, mutuals, border, seeThrough = sceneOn)
+        if (sceneOn) app.bloom.ui.components.CardBorderScene(border!!, cardShape, dark, hover, layers = false)
     }
 }
 
 @Composable
-private fun ProfileCard(vm: AppViewModel, u: User, mutuals: Mutuals?, border: app.bloom.ui.components.CosmeticAsset?) {
+private fun ProfileCard(vm: AppViewModel, u: User, mutuals: Mutuals?, border: app.bloom.ui.components.CosmeticAsset?, seeThrough: Boolean = false) {
     val scheme = MaterialTheme.colorScheme
     val accent = hueColor(u.hue)
     val clipboard = LocalClipboardManager.current
@@ -183,7 +184,8 @@ private fun ProfileCard(vm: AppViewModel, u: User, mutuals: Mutuals?, border: ap
     Column(
         Modifier.fillMaxSize()
             .then(app.bloom.ui.components.cosmeticBorderOf(Modifier, border))
-            .then(if (bg != null) Modifier.background(Brush.verticalGradient(listOf(bg.first().copy(alpha = 0.55f), (bg.getOrNull(1) ?: bg.first()).copy(alpha = 0.22f), androidx.compose.ui.graphics.Color.Transparent))) else Modifier)
+            // Root fills the whole card with the profile background (gradient at its angle)
+            .then(if (bg != null) Modifier.background(app.bloom.ui.components.fillBrush(u.profileBg) ?: Brush.verticalGradient(bg)) else Modifier)
             .verticalScroll(rememberScrollState()),
     ) {
         Box(Modifier.fillMaxWidth().height(150.dp)) {
@@ -193,16 +195,19 @@ private fun ProfileCard(vm: AppViewModel, u: User, mutuals: Mutuals?, border: ap
             )
             if (u.bannerUrl != null) coil3.compose.AsyncImage(u.bannerUrl, null, Modifier.fillMaxSize(), contentScale = androidx.compose.ui.layout.ContentScale.Crop)
             Box(Modifier.align(Alignment.TopCenter).padding(top = 10.dp).size(40.dp, 5.dp).clip(RoundedCornerShape(50)).background(scheme.onSurface.copy(alpha = 0.3f)))
+            // with a Root avatar frame, the frame IS the ring: no glow, no backing ring, plain circle
+            val framed = u.frameId != null && app.bloom.ui.components.CosmeticStore.assets[u.frameId] != null && app.bloom.ui.theme.Ui.cosmeticFrames
             Box(Modifier.align(Alignment.BottomStart).offset(x = 20.dp, y = 48.dp).size(104.dp)) {
-                // ring behind the avatar (clipped to the morphing shape)
-                Box(
+                if (!framed) Box(
+                    // ring behind the avatar (clipped to the morphing shape)
                     Modifier.matchParentSize()
                         .contourGlow(avatarShape, listOf(accent, scheme.primary, scheme.tertiary), intensity = morphP.coerceIn(0f, 1f), stroke = 3.dp, glowRadius = 18.dp)
                         .clip(avatarShape)
                         .background(scheme.surfaceContainer),
                 )
                 // avatar + status dot drawn unclipped so the dot isn't cut off
-                Avatar(u.displayName, u.hue, 92.dp, Modifier.align(Alignment.Center), userId = u.id, status = u.status, shape = avatarShape)
+                Avatar(u.displayName, u.hue, if (framed) 96.dp else 92.dp, Modifier.align(Alignment.Center), userId = u.id, status = u.status,
+                    shape = avatarShape) // a framed avatar becomes Root's rounded square inside Avatar()
             }
         }
         // the strip under the banner: the avatar's lower half on the left, the status
@@ -267,7 +272,7 @@ private fun ProfileCard(vm: AppViewModel, u: User, mutuals: Mutuals?, border: ap
                 }
             }
             Spacer(Modifier.height(12.dp))
-            Card(shape = app.bloom.ui.theme.Radii.panel, colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerHigh)) {
+            Card(shape = app.bloom.ui.theme.Radii.panel, colors = CardDefaults.cardColors(containerColor = scheme.surfaceContainerHigh.copy(alpha = if (seeThrough || u.profileBg != null) 0.55f else 1f))) {
                 Column(Modifier.padding(16.dp).fillMaxWidth()) {
                     Text("About", style = MaterialTheme.typography.labelLarge, color = scheme.primary)
                     if (u.bio.isBlank()) Text("No bio yet", style = MaterialTheme.typography.bodyLarge, color = scheme.onSurfaceVariant)

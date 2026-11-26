@@ -1291,7 +1291,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Fetches someone's full profile (User/Get) and merges it in. Failures are logged, not shown. */
     suspend fun refreshUser(userId: Long) {
         runCatching { Core.social("user_get", JSONObject().put("user", userId)) as JSONObject }
-            .onSuccess { o -> putUsers(listOf(User.from(o).let { fresh -> users[userId]?.let { old -> fresh.copy(status = old.status) } ?: fresh })); if (userId == me?.id) me = users[userId] }
+            .onSuccess { o ->
+                putUsers(listOf(User.from(o).let { fresh -> users[userId]?.let { old -> fresh.copy(status = old.status) } ?: fresh }))
+                if (userId == me?.id) me = users[userId]
+                prefetchImages(listOfNotNull(users[userId]?.avatarUrl, users[userId]?.bannerUrl))
+            }
             .onFailure { runCatching { Core.log("profile", "user_get: ${it.message}") } }
     }
 
@@ -1316,6 +1320,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 delay(120) // leave room for the user's own requests
             }
         }
+    }
+
+    /** Warm the image caches so a profile opens with its picture and banner already there. */
+    fun prefetchImages(urls: List<String>) {
+        if (urls.isEmpty()) return
+        val ctx = getApplication<Application>()
+        val loader = coil3.SingletonImageLoader.get(ctx)
+        urls.forEach { loader.enqueue(coil3.request.ImageRequest.Builder(ctx).data(it).build()) }
     }
 
     // ---- pinned messages ----

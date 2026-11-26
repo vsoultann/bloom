@@ -1069,7 +1069,7 @@ fun renderContent(
                 at("**") && wrap("**", SpanStyle(fontWeight = FontWeight.Bold)) -> {}
                 at("__") && wrap("__", SpanStyle(textDecoration = TextDecoration.Underline)) -> {}
                 at("~~") && wrap("~~", SpanStyle(textDecoration = TextDecoration.LineThrough)) -> {}
-                (at("*") || at("_")) && i + 1 < text.length && text[i + 1] != ' ' && wrap(text[i].toString(), SpanStyle(fontStyle = FontStyle.Italic)) -> {}
+                (at("*") || at("_")) && i + 1 < text.length && text[i + 1] != ' ' && wrap(text[i].toString(), SpanStyle(fontStyle = FontStyle.Italic, fontSynthesis = androidx.compose.ui.text.font.FontSynthesis.All)) -> {}
                 at("⟦m:") || at("⟦c:") -> {
                     val end = text.indexOf('⟧', i)
                     if (end < 0) { append(text[i]); i++ } else {
@@ -1157,7 +1157,11 @@ fun renderContent(
             else -> inline(line)
         }
         i = lineEnd
-        if (i < src.length && src[i] == '\n') { append('\n'); i++ }
+        if (i < src.length && src[i] == '\n') {
+            // an empty line between paragraphs: half a line, not a full blank one
+            if (line.isEmpty() && length > 0) withStyle(SpanStyle(fontSize = 0.5.em)) { append('\n') } else append('\n')
+            i++
+        }
     }
 }
 

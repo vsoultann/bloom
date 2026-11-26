@@ -40,27 +40,30 @@ import coil3.compose.AsyncImage
 fun ChatBackground(vm: AppViewModel, modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     when (vm.chatBg) {
-        "gradient" -> Box(
-            modifier.fillMaxSize().background(
-                Brush.linearGradient(
-                    listOf(scheme.primaryContainer.copy(alpha = 0.55f), scheme.surfaceContainer, scheme.tertiaryContainer.copy(alpha = 0.45f)),
-                    start = Offset.Zero, end = Offset(1200f, 2600f),
-                ),
-            ),
-        )
-        "pattern" -> Canvas(modifier.fillMaxSize().background(scheme.surfaceContainerLow)) {
-            // soft scattered blooms in the theme colours
-            val step = 120.dp.toPx()
-            var row = 0
-            var y = step / 2
-            while (y < size.height + step) {
-                var x = if (row % 2 == 0) step / 2 else step
-                while (x < size.width + step) {
-                    drawCircle(scheme.primary.copy(alpha = 0.07f), radius = step * 0.22f, center = Offset(x, y))
-                    drawCircle(scheme.tertiary.copy(alpha = 0.06f), radius = step * 0.1f, center = Offset(x + step * 0.3f, y - step * 0.25f))
-                    x += step
+        "gradient" -> AuroraBackground(modifier)
+        "pattern" -> {
+            // the blooms float: each drifts on its own slow loop
+            val live = app.bloom.ui.theme.Ui.effectsOn
+            val time by if (live) app.bloom.ui.components.rememberFrameTime(30) else remember { mutableStateOf(0f) }
+            Canvas(modifier.fillMaxSize().background(scheme.surfaceContainerLow)) {
+                val t = time
+                val step = 120.dp.toPx()
+                var row = 0
+                var y = step / 2
+                while (y < size.height + step) {
+                    var x = if (row % 2 == 0) step / 2 else step
+                    var col = 0
+                    while (x < size.width + step) {
+                        val ph = (row * 7 + col * 3) * 0.7f
+                        val dx = kotlin.math.sin(t * 0.35f + ph) * step * 0.08f
+                        val dy = kotlin.math.cos(t * 0.28f + ph * 1.3f) * step * 0.08f
+                        val pulse = 1f + 0.12f * kotlin.math.sin(t * 0.6f + ph)
+                        drawCircle(scheme.primary.copy(alpha = 0.07f), radius = step * 0.22f * pulse, center = Offset(x + dx, y + dy))
+                        drawCircle(scheme.tertiary.copy(alpha = 0.06f), radius = step * 0.1f, center = Offset(x + step * 0.3f - dx, y - step * 0.25f - dy))
+                        x += step; col++
+                    }
+                    y += step * 0.85f; row++
                 }
-                y += step * 0.85f; row++
             }
         }
         "image" -> vm.chatBgImage?.let { img ->
@@ -194,6 +197,43 @@ private fun ReplyLine(vm: AppViewModel, rid: Long, replyAuthor: Long?, replySnip
             Text(author?.displayName ?: "Unknown", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = author?.let { hueColor(it.hue) } ?: scheme.onSurfaceVariant, maxLines = 1)
             Spacer(Modifier.width(6.dp))
             Text(snippet, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
+
+/**
+ * The default chat backdrop, alive: big soft glows in the theme's colours wander on
+ * slow, independent loops over a gently breathing gradient. ~30 fps, drawn in the draw
+ * phase only (no recomposition); still when animations are off or in battery saver.
+ */
+@Composable
+fun AuroraBackground(modifier: Modifier = Modifier) {
+    val scheme = MaterialTheme.colorScheme
+    val live = app.bloom.ui.theme.Ui.effectsOn
+    val time = if (live) app.bloom.ui.components.rememberFrameTime(30) else remember { mutableStateOf(8f) }
+    val speed = app.bloom.ui.theme.Ui.speed
+    val blobs = remember(scheme) {
+        listOf(
+            Triple(scheme.primary, 0.55f, 0f), Triple(scheme.tertiary, 0.5f, 2.1f),
+            Triple(scheme.secondary, 0.45f, 4.2f), Triple(scheme.primaryContainer, 0.6f, 5.6f),
+        )
+    }
+    Canvas(modifier.fillMaxSize().background(scheme.surfaceContainer)) {
+        val t = time.value * speed * 0.12f
+        val w = size.width; val h = size.height; val r0 = maxOf(w, h)
+        // breathing base gradient
+        val k = 0.5f + 0.5f * kotlin.math.sin(t * 0.7f)
+        drawRect(Brush.linearGradient(
+            listOf(scheme.primaryContainer.copy(alpha = 0.35f + 0.15f * k), scheme.surfaceContainer, scheme.tertiaryContainer.copy(alpha = 0.25f + 0.15f * (1 - k))),
+            start = Offset(0f, h * 0.1f * k), end = Offset(w, h),
+        ))
+        blobs.forEachIndexed { i, (c, a, ph) ->
+            // Lissajous paths: never quite repeat, never leave the screen for long
+            val cx = w * (0.5f + 0.42f * kotlin.math.sin(t * (0.9f + i * 0.17f) + ph))
+            val cy = h * (0.5f + 0.40f * kotlin.math.cos(t * (0.7f + i * 0.13f) + ph * 1.7f))
+            val r = r0 * (0.38f + 0.08f * kotlin.math.sin(t * 1.3f + ph))
+            drawCircle(Brush.radialGradient(listOf(c.copy(alpha = a * 0.32f), Color.Transparent), Offset(cx, cy), r), r, Offset(cx, cy))
         }
     }
 }

@@ -86,6 +86,9 @@ fun Avatar(
 ) {
     val image = userId?.let { LocalAvatars.current[it] }
     val url = userId?.let { LocalAvatarUrls.current[it] }
+    // Root frames are cut for its rounded-square avatars: wear one → that shape, like Root
+    val frame = userId?.let { LocalAvatarFrames.current[it] }?.let { CosmeticStore.assets[it] }?.takeIf { it.art != null && app.bloom.ui.theme.Ui.cosmeticFrames }
+    val shape = if (frame != null) androidx.compose.foundation.shape.RoundedCornerShape(22) else shape
     Box(modifier.size(size)) {
         Box(Modifier.matchParentSize().clip(shape), contentAlignment = Alignment.Center) {
             if (image != null) {
@@ -109,12 +112,12 @@ fun Avatar(
             }
         }
         // Root avatar frame: art on a 256 canvas where the picture fills the middle 168
-        val frame = userId?.let { LocalAvatarFrames.current[it] }?.let { CosmeticStore.assets[it] }
-        if (frame?.art != null && app.bloom.ui.theme.Ui.cosmeticFrames) {
+        if (frame?.art != null) {
             coil3.compose.AsyncImage(
                 frame.art, null,
-                Modifier.align(Alignment.Center).requiredSize(size * (frame.canvas / frame.avatarSize)),
-                contentScale = ContentScale.Fit,
+                // the picture sits at the canvas centre, avatarSize wide; keep the canvas's real shape
+                Modifier.align(Alignment.Center).requiredSize(size * (frame.canvas / frame.avatarSize), size * (frame.canvasH / frame.avatarSize)),
+                contentScale = ContentScale.FillBounds,
             )
         }
         if (status != null) {

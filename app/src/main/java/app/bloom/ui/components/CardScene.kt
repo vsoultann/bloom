@@ -111,16 +111,16 @@ private fun dim(v: Any?, whole: Dp): Dp? = when (v) {
  * "hover" layers play again. Put it in a Box above the card's content.
  */
 @Composable
-fun CardBorderScene(asset: CosmeticAsset, shape: Shape, dark: Boolean, hover: Int, modifier: Modifier = Modifier) {
+fun CardBorderScene(asset: CosmeticAsset, shape: Shape, dark: Boolean, hover: Int, modifier: Modifier = Modifier, layers: Boolean = true, outline: Boolean = true) {
     if (!Ui.cosmeticFrames) return
-    val layers = remember(asset, dark) { parseLayers(asset, dark) }
+    val all = remember(asset, dark) { if (layers) parseLayers(asset, dark) else emptyList() }
     BoxWithConstraints(modifier.fillMaxSize()) {
         val w = maxWidth; val h = maxHeight
         Box(Modifier.fillMaxSize().clip(shape)) {
-            layers.filter { it.clip }.forEach { SceneLayer(it, w, h, hover) }
+            all.filter { it.clip }.forEach { SceneLayer(it, w, h, hover) }
         }
-        layers.filter { !it.clip }.forEach { SceneLayer(it, w, h, hover) }
-        if (asset.clientArt == "shimmer") ShimmerOutline(shape)
+        all.filter { !it.clip }.forEach { SceneLayer(it, w, h, hover) }
+        if (outline && asset.clientArt == "shimmer") ShimmerOutline(shape)
     }
 }
 

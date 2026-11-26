@@ -4,6 +4,9 @@ package app.bloom.ui.screens
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
+import kotlinx.coroutines.delay
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -56,15 +59,77 @@ private val RAIL = 76.dp
 
 @Composable
 fun MainScreen(vm: AppViewModel) {
-    if (!vm.ready) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface), Alignment.Center) { MorphingLoader(size = 84.dp) }
-        return
+    // Splash: the logo blooms in; once Bloom is ready the app opens out of the centre
+    // (circular reveal) while the logo swells and spins away. Once per launch.
+    var splashDone by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
+    val reveal = remember { Animatable(if (splashDone) 1f else 0f) }
+    var minShown by remember { mutableStateOf(splashDone) }
+    LaunchedEffect(Unit) { delay(900); minShown = true }
+    LaunchedEffect(vm.ready, minShown) {
+        if (vm.ready && minShown && !splashDone) {
+            reveal.animateTo(1f, if (app.bloom.ui.theme.Ui.animations) tween((700 / app.bloom.ui.theme.Ui.speed).toInt(), easing = androidx.compose.animation.core.FastOutSlowInEasing) else snap())
+            splashDone = true
+        }
     }
-    AnimatedContent(
-        vm.authMode == app.bloom.core.AuthMode.SIGNED_OUT,
-        transitionSpec = { (fadeIn(Motion.effects()) + scaleIn(Motion.spatial(), initialScale = 0.96f)) togetherWith fadeOut(Motion.effects()) },
-        label = "auth",
-    ) { signedOut -> if (signedOut) LoginScreen(vm) else SignedInShell(vm) }
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+        if (vm.ready) Box(
+            Modifier.fillMaxSize().graphicsLayer {
+                val p = reveal.value
+                if (p < 1f) {
+                    val k = 1.06f - 0.06f * p
+                    scaleX = k; scaleY = k; alpha = (p * 1.6f).coerceAtMost(1f)
+                    // circle growing from the centre to past the corners
+                    val r = kotlin.math.hypot(size.width, size.height) / 2f * p
+                    shape = androidx.compose.foundation.shape.GenericShape { sz, _ -> addOval(androidx.compose.ui.geometry.Rect(androidx.compose.ui.geometry.Offset(sz.width / 2, sz.height / 2), r)) }
+                    clip = true
+                }
+            },
+        ) {
+            AnimatedContent(
+                vm.authMode == app.bloom.core.AuthMode.SIGNED_OUT,
+                transitionSpec = { (fadeIn(Motion.effects()) + scaleIn(Motion.spatial(), initialScale = 0.96f)) togetherWith fadeOut(Motion.effects()) },
+                label = "auth",
+            ) { signedOut -> if (signedOut) LoginScreen(vm) else SignedInShell(vm) }
+        }
+        if (!splashDone) Splash({ reveal.value })
+    }
+}
+
+@Composable
+private fun Splash(progress: () -> Float) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        Modifier.fillMaxSize().graphicsLayer { alpha = 1f - (progress() * 1.4f).coerceAtMost(1f) },
+        contentAlignment = Alignment.Center,
+    ) {
+        AuroraBackground()
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            BloomLogo(
+                128.dp,
+                Modifier.graphicsLayer {
+                    val p = progress()
+                    val k = 1f + 2.2f * p * p
+                    scaleX = k; scaleY = k; rotationZ = 90f * p
+                },
+            )
+            Spacer(Modifier.height(22.dp))
+            // the wordmark rises in letter by letter
+            Row {
+                "Bloom".forEachIndexed { i, c ->
+                    var on by remember { mutableStateOf(false) }
+                    LaunchedEffect(Unit) { delay(180L + i * 70L); on = true }
+                    val a by animateFloatAsState(if (on) 1f else 0f, Motion.spring(0.62f, 320f), label = "l$i")
+                    Text(
+                        c.toString(), style = MaterialTheme.typography.displaySmall, color = scheme.onSurface,
+                        modifier = Modifier.graphicsLayer {
+                            alpha = a.coerceIn(0f, 1f); translationY = (1f - a) * 28.dp.toPx()
+                            translationY -= progress() * 40.dp.toPx()
+                        },
+                    )
+                }
+            }
+        }
+    }
 }
 
 @Composable

@@ -117,13 +117,20 @@ class MainActivity : ComponentActivity() {
                     // Root's image URLs are re-signed every session; key the cache on the
                     // stable part so avatars/icons load instantly from disk next time.
                     add(app.bloom.ui.components.StableUrlKeyer())
-                    add(OkHttpNetworkFetcherFactory())
+                    // many images from the same CDN at once (chat media, avatars, emoji): allow it
+                    add(OkHttpNetworkFetcherFactory(callFactory = {
+                        okhttp3.OkHttpClient.Builder()
+                            .dispatcher(okhttp3.Dispatcher().apply { maxRequests = 64; maxRequestsPerHost = 16 })
+                            .connectionPool(okhttp3.ConnectionPool(16, 5, java.util.concurrent.TimeUnit.MINUTES))
+                            .build()
+                    }))
                     add(AnimatedImageDecoder.Factory())
                     add(coil3.video.VideoFrameDecoder.Factory())
                 }
                 .memoryCache { MemoryCache.Builder().maxSizePercent(ctx, 0.25).build() }
                 .diskCache { DiskCache.Builder().directory(ctx.cacheDir.resolve("images").toOkioPath()).maxSizeBytes(512L * 1024 * 1024).build() }
-                .crossfade(true)
+                // short fade; memory hits show instantly (Coil skips the fade for them)
+                .crossfade(90)
                 .build()
         }
         openFrom(intent)

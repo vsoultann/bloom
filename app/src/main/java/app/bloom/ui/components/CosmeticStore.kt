@@ -30,7 +30,8 @@ data class CosmeticAsset(
     val id: String,
     val type: String,                 // avatarframe · cardborder · namefont · nameeffect
     val art: File? = null,
-    val canvas: Float = 256f,         // Root's DEFAULT_FRAME_CANVAS
+    val canvas: Float = 256f,         // Root's DEFAULT_FRAME_CANVAS (width)
+    val canvasH: Float = 256f,        // some frames are taller (fire: 256×320)
     val avatarSize: Float = 168f,     // Root's DEFAULT_FRAME_AVATAR_SIZE
     val insets: FloatArray = floatArrayOf(0f, 0f, 0f, 0f), // left, top, right, bottom (image px)
     val font: File? = null,
@@ -188,7 +189,9 @@ object CosmeticStore {
                 ?: all.firstOrNull { it.extension.lowercase() in exts }
 
         fun num(k: String, d: Float) = (entry.opt(k) ?: m.opt(k)).let { (it as? Number)?.toFloat() } ?: d
-        val canvas = (entry.optJSONObject("canvas") ?: m.optJSONObject("canvas"))?.let { (it.opt("width") as? Number)?.toFloat() } ?: num("canvas", 256f)
+        val canvasObj = entry.optJSONObject("canvas") ?: m.optJSONObject("canvas")
+        val canvas = canvasObj?.let { (it.opt("width") as? Number)?.toFloat() } ?: num("canvas", 256f)
+        val canvasH = canvasObj?.let { (it.opt("height") as? Number)?.toFloat() } ?: canvas
         val ins = entry.optJSONObject("insets") ?: m.optJSONObject("insets")
         return CosmeticAsset(
             id = id, type = type,
@@ -199,6 +202,7 @@ object CosmeticStore {
                 else -> null
             },
             canvas = canvas.takeIf { it > 0 } ?: 256f,
+            canvasH = canvasH.takeIf { it > 0 } ?: (canvas.takeIf { it > 0 } ?: 256f),
             avatarSize = num("avatarSize", 168f).takeIf { it > 0 } ?: 168f,
             insets = floatArrayOf((ins?.optDouble("left", 0.0) ?: 0.0).toFloat(), (ins?.optDouble("top", 0.0) ?: 0.0).toFloat(), (ins?.optDouble("right", 0.0) ?: 0.0).toFloat(), (ins?.optDouble("bottom", 0.0) ?: 0.0).toFloat()),
             font = if (type == "namefont") find(listOf("font", "fontUri", "path", "src"), fonts) else null,
