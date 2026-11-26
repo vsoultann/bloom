@@ -37,6 +37,12 @@ data class CosmeticAsset(
     val fontWeight: Int = 400,
     val sizeScale: Float = 1f,
     val renderer: String? = null,
+    /** bundle folder (scene layers reference files in it) */
+    val dir: File? = null,
+    /** card-border scene: layered, timed art (JSON from the manifest) */
+    val scene: String? = null,
+    /** art Root draws itself, e.g. "shimmer" (an animated outline) */
+    val clientArt: String? = null,
 )
 
 object CosmeticStore {
@@ -185,14 +191,22 @@ object CosmeticStore {
         val ins = entry.optJSONObject("insets") ?: m.optJSONObject("insets")
         return CosmeticAsset(
             id = id, type = type,
-            art = if (type == "avatarframe" || type == "cardborder") find(listOf("art", "artUri", "image", "path", "src"), images) else null,
+            art = when {
+                type == "avatarframe" -> find(listOf("art", "artUri", "image", "path", "src"), images)
+                type == "cardborder" && entry.optJSONObject("art")?.optString("source") != "client" && entry.optJSONObject("scene") == null ->
+                    find(listOf("art", "artUri", "image", "path", "src"), images)
+                else -> null
+            },
             canvas = canvas.takeIf { it > 0 } ?: 256f,
             avatarSize = num("avatarSize", 168f).takeIf { it > 0 } ?: 168f,
             insets = floatArrayOf((ins?.optDouble("left", 0.0) ?: 0.0).toFloat(), (ins?.optDouble("top", 0.0) ?: 0.0).toFloat(), (ins?.optDouble("right", 0.0) ?: 0.0).toFloat(), (ins?.optDouble("bottom", 0.0) ?: 0.0).toFloat()),
             font = if (type == "namefont") find(listOf("font", "fontUri", "path", "src"), fonts) else null,
-            fontWeight = num("fontWeight", 400f).toInt().coerceIn(100, 900),
+            fontWeight = num("fontWeight", num("weight", 400f)).toInt().coerceIn(100, 900),
             sizeScale = num("sizeScale", 1f).coerceIn(0.5f, 2f),
             renderer = (entry.opt("renderer") as? JSONObject)?.optString("id") ?: entry.optString("renderer").takeIf { it.isNotEmpty() },
+            dir = dir,
+            scene = entry.optJSONObject("scene")?.toString(),
+            clientArt = entry.optJSONObject("art")?.takeIf { it.optString("source") == "client" }?.optString("id")?.takeIf { it.isNotEmpty() },
         )
     }
 }

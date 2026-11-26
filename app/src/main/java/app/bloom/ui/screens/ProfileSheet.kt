@@ -1,5 +1,11 @@
 package app.bloom.ui.screens
 
+import androidx.compose.foundation.gestures.awaitFirstDown
+
+import androidx.compose.foundation.gestures.awaitEachGesture
+
+import androidx.compose.ui.input.pointer.pointerInput
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.Animatable
@@ -130,6 +136,27 @@ fun ProfileSheet(vm: AppViewModel) {
 
 @Composable
 private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
+    val border = u.borderId?.let { app.bloom.ui.components.CosmeticStore.assets[it] }
+    // "hover" layers of a card-border scene play when the card is touched (and once on open)
+    var hover by remember(u.id) { androidx.compose.runtime.mutableIntStateOf(0) }
+    LaunchedEffect(u.id, border) { if (border != null) { delay(700); hover++ } }
+    Box(
+        Modifier.fillMaxSize().pointerInput(u.id) {
+            awaitEachGesture { awaitFirstDown(requireUnconsumed = false); hover++ }
+        },
+    ) {
+        ProfileCard(vm, u, mutuals, border)
+        if (border != null && (border.scene != null || border.clientArt != null)) {
+            app.bloom.ui.components.CardBorderScene(
+                border, RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                dark = app.bloom.ui.theme.LocalDark.current, hover = hover,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileCard(vm: AppViewModel, u: User, mutuals: Mutuals?, border: app.bloom.ui.components.CosmeticAsset?) {
     val scheme = MaterialTheme.colorScheme
     val accent = hueColor(u.hue)
     val clipboard = LocalClipboardManager.current
@@ -144,7 +171,6 @@ private fun ProfileContent(vm: AppViewModel, u: User, mutuals: Mutuals?) {
 
     // Root profile background cosmetic: tints the whole card, fading into the sheet
     val bg = u.profileBg?.let { f -> f.colors.map { androidx.compose.ui.graphics.Color(it) } }
-    val border = u.borderId?.let { app.bloom.ui.components.CosmeticStore.assets[it] }
     Column(
         Modifier.fillMaxSize()
             .then(app.bloom.ui.components.cosmeticBorderOf(Modifier, border))
